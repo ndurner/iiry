@@ -6,9 +6,12 @@ import json
 import os
 import re
 import secrets
+import shutil
+import subprocess
+import tempfile
 import time
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlencode
@@ -59,6 +62,8 @@ ACCESS_CERT_PEM_PATH = Path(env("ACCESS_CERT_PEM_PATH", str(ROOT / "secrets/acce
 REGISTRATION_CERT_JWT_PATH = Path(env("REGISTRATION_CERT_JWT_PATH", str(ROOT / "secrets/registration-certificate.jwt")))
 RESPONSE_MODE = env("RESPONSE_MODE", "direct_post.jwt")
 SERIALIZE_PRESENTATIONS = env("IIRY_SERIALIZE_PRESENTATIONS", "0") == "1"
+C2PATOOL_PATH = os.environ.get("C2PATOOL_PATH") or shutil.which("c2patool") or "/opt/homebrew/bin/c2patool"
+C2PA_MAX_IMAGE_BYTES = int(env("IIRY_C2PA_MAX_IMAGE_BYTES", "15000000"))
 
 NONCE_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,2048}$")
 
@@ -71,7 +76,6 @@ class Session:
     api_token: str
     nonce: str
     created_at: int
-    request_context: str | None = None
     request_object: str | None = None
     raw_response: str | None = None
     decrypted_response: dict[str, Any] | None = None
@@ -82,7 +86,16 @@ class Session:
 
 class CreatePresentationRequest(BaseModel):
     nonce: str = Field(min_length=32, max_length=2048)
-    request_context: str | None = Field(default=None, max_length=4096)
+
+
+class C2PAEmbedRequest(BaseModel):
+    image_b64url: str
+    manifest_json_b64url: str
+    suggested_file_name: str | None = Field(default=None, max_length=256)
+
+
+class C2PAInspectRequest(BaseModel):
+    image_b64url: str
 
 
 def load_sessions() -> dict[str, Session]:
@@ -90,7 +103,8 @@ def load_sessions() -> dict[str, Session]:
         return {}
     try:
         payload = json.loads(SESSIONS_PATH.read_text())
-        return {state: Session(**item) for state, item in payload.items()}
+        allowed = {field.name for field in fields(Session)}
+        return {state: Session(**{key: value for key, value in item.items() if key in allowed}) for state, item in payload.items()}
     except Exception:
         return {}
 
@@ -131,6 +145,47 @@ def b64url_decode_bytes(value: str) -> bytes:
 
 def b64url_decode_text(value: str) -> str:
     return b64url_decode_bytes(value).decode("utf-8")
+
+
+def c2patool_executable() -> str:
+    if Path(C2PATOOL_PATH).is_file():
+        return C2PATOOL_PATH
+    found = shutil.which(C2PATOOL_PATH)
+    if found:
+        return found
+    raise RuntimeError("c2patool not found; set C2PATOOL_PATH")
+
+
+def run_c2patool(arguments: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [c2patool_executable(), *arguments],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=45,
+    )
+
+
+def c2pa_error_response(result: subprocess.CompletedProcess[str]) -> JSONResponse:
+    return JSONResponse(
+        {
+            "error": "c2patool_failed",
+            "returncode": result.returncode,
+            "stdout": result.stdout[-4000:],
+            "stderr": result.stderr[-4000:],
+        },
+        status_code=502,
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
+
+
+def parse_validation_state(report_json: bytes) -> str | None:
+    try:
+        parsed = json.loads(report_json)
+    except Exception:
+        return None
+    value = parsed.get("validation_state")
+    return value if isinstance(value, str) else None
 
 
 def load_private_key() -> ec.EllipticCurvePrivateKey:
@@ -437,7 +492,6 @@ def create_presentation(request: CreatePresentationRequest) -> JSONResponse:
         state=str(uuid.uuid4()),
         api_token=secrets.token_urlsafe(32),
         nonce=request.nonce,
-        request_context=request.request_context,
         created_at=int(time.time()),
     )
     sessions[session.state] = session
@@ -453,6 +507,77 @@ def create_presentation(request: CreatePresentationRequest) -> JSONResponse:
             "response_uri": f"{PUBLIC_BASE_URL}/oid4vp/response",
             "status_url": f"{PUBLIC_BASE_URL}/api/presentations/{session.state}",
             "wallet_response_url": f"{PUBLIC_BASE_URL}/api/presentations/{session.state}/wallet-response",
+        },
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
+
+
+@app.post("/api/c2pa/embed")
+def embed_c2pa(request: C2PAEmbedRequest) -> JSONResponse:
+    try:
+        image = b64url_decode_bytes(request.image_b64url)
+        manifest = b64url_decode_bytes(request.manifest_json_b64url)
+        json.loads(manifest)
+    except Exception as exc:
+        return JSONResponse({"error": f"invalid_request_payload: {exc}"}, status_code=400)
+    if len(image) > C2PA_MAX_IMAGE_BYTES:
+        return JSONResponse({"error": "image_too_large"}, status_code=413)
+    if not image.startswith(b"\xff\xd8"):
+        return JSONResponse({"error": "image_must_be_jpeg"}, status_code=400)
+
+    with tempfile.TemporaryDirectory(prefix="iiry-c2pa-") as temp:
+        temp_dir = Path(temp)
+        source_path = temp_dir / "source.jpg"
+        manifest_path = temp_dir / "manifest.json"
+        output_path = temp_dir / "output.jpg"
+        source_path.write_bytes(image)
+        manifest_path.write_bytes(manifest)
+
+        sign_result = run_c2patool([str(source_path), "-m", str(manifest_path), "-o", str(output_path), "-f"])
+        if sign_result.returncode != 0:
+            return c2pa_error_response(sign_result)
+
+        inspect_result = run_c2patool([str(output_path), "-d"])
+        if inspect_result.returncode != 0:
+            return c2pa_error_response(inspect_result)
+        report = inspect_result.stdout.encode("utf-8")
+        signed = output_path.read_bytes()
+
+    return JSONResponse(
+        {
+            "jpeg_b64url": b64url(signed),
+            "c2patool_report_json_b64url": b64url(report),
+            "validation_state": parse_validation_state(report),
+            "signing_stderr": sign_result.stderr[-2000:],
+        },
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
+
+
+@app.post("/api/c2pa/inspect")
+def inspect_c2pa(request: C2PAInspectRequest) -> JSONResponse:
+    try:
+        image = b64url_decode_bytes(request.image_b64url)
+    except Exception as exc:
+        return JSONResponse({"error": f"invalid_image_b64url: {exc}"}, status_code=400)
+    if len(image) > C2PA_MAX_IMAGE_BYTES:
+        return JSONResponse({"error": "image_too_large"}, status_code=413)
+    if not image.startswith(b"\xff\xd8"):
+        return JSONResponse({"error": "image_must_be_jpeg"}, status_code=400)
+
+    with tempfile.TemporaryDirectory(prefix="iiry-c2pa-") as temp:
+        image_path = Path(temp) / "asset.jpg"
+        image_path.write_bytes(image)
+        inspect_result = run_c2patool([str(image_path), "-d"])
+        if inspect_result.returncode != 0:
+            return c2pa_error_response(inspect_result)
+        report = inspect_result.stdout.encode("utf-8")
+
+    return JSONResponse(
+        {
+            "c2patool_report_json_b64url": b64url(report),
+            "validation_state": parse_validation_state(report),
+            "stderr": inspect_result.stderr[-2000:],
         },
         headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
     )
