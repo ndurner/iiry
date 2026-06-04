@@ -1,0 +1,47 @@
+import Foundation
+
+public enum IIRYRequestText {
+    public static func make(date: Date = Date(), nonceCode: String? = nil) throws -> String {
+        let code = try nonceCode ?? IIRYFileNames.shortCode(data: IIRYNonce.secureRandom(count: 8))
+        return "Is it really you?\n(\(IIRYDateFormatting.shortDateString(from: date)) \(code))"
+    }
+}
+
+public enum IIRYFileNames {
+    public static func proofFileName(date: Date, noncePayload: IIRYNoncePayload) -> String {
+        let random = (try? Base64URL.decode(noncePayload.randomNonceB64URL)) ?? Data()
+        let code = (try? shortCode(data: random)) ?? "UNKNOWN"
+        return "IIRY-proof-\(IIRYDateFormatting.shortDateString(from: date))-\(code).\(IIRYConstants.carrierExtension)"
+    }
+
+    public static func shortCode(data: Data) throws -> String {
+        guard !data.isEmpty else {
+            throw IIRYError.invalidNonce("Cannot derive a short code from empty data")
+        }
+        let encoded = Base64URL.encode(data)
+            .uppercased()
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "_", with: "")
+        return String(encoded.prefix(8))
+    }
+}
+
+public enum IIRYDateFormatting {
+    public static func shortDateString(from date: Date) -> String {
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(
+            format: "%04d-%02d-%02d",
+            components.year ?? 0,
+            components.month ?? 0,
+            components.day ?? 0
+        )
+    }
+
+    public static func iso8601String(from date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
+    }
+}

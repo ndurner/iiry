@@ -1,1 +1,9 @@
 scratch/
+.build/
+.swiftpm/
+.DS_Store
+.env
+.venv/
+service/data/
+service/secrets/*
+!service/secrets/.gitkeep
