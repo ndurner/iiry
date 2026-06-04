@@ -111,8 +111,9 @@ struct IIRYCLI {
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
         let imageURL = tempDir.appendingPathComponent("image.jpg")
-        let manifestURL = tempDir.appendingPathComponent("manifest.json")
         try Base64URL.decode(carrier.imageB64URL).write(to: imageURL)
+
+        let manifestURL = tempDir.appendingPathComponent("manifest.json")
         let manifest = try c2paManifestObject(for: carrier)
         try JSONCoding.objectData(manifest, pretty: true).write(to: manifestURL)
 
@@ -128,7 +129,8 @@ struct IIRYCLI {
     }
 
     static func c2paManifestObject(for carrier: IIRYCarrier) throws -> [String: Any] {
-        let proofData = try JSONCoding.encoder(pretty: false).encode(carrier.proof)
+        let proof = carrier.proof
+        let proofData = try JSONCoding.encoder(pretty: false).encode(proof)
         let proofObject = try JSONSerialization.jsonObject(with: proofData)
         return [
             "claim_generator": IIRYConstants.claimGenerator,
@@ -186,6 +188,7 @@ struct IIRYCLI {
             throw IIRYError.commandFailed("\(executable) exited with \(process.terminationStatus)")
         }
     }
+
 
     static func printHelp() {
         print("""

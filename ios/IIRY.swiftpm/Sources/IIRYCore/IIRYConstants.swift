@@ -10,6 +10,6 @@ public enum IIRYConstants {
     public static let carrierUTType = "de.ndurner.iiry.proof"
     public static let carrierMediaType = "application/vnd.io.github.ndurner.iiry.proof+json"
     public static let jpegMediaType = "image/jpeg"
-    public static let hardBindingReferenceURL = "self#jumbf=c2pa.assertions/c2pa.hash.data"
+    public static let hardBindingReferenceURL = "self#iiry.asset-binding-material.v1"
     public static let claimGenerator = "IIRY/0.1"
 }

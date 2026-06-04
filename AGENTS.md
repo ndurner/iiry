@@ -18,6 +18,7 @@ Do not duplicate nonce encoding, asset hashing, proof-bundle encoding, carrier p
 - Do not claim C2PA validity unless a real C2PA manifest and claim signature validate.
 - Do not hand-roll C2PA/JUMBF signing. Use `c2patool`, `c2pa-rs`, or a reviewed C2PA SDK/signer bridge.
 - Treat the `.iiry` carrier as a branded transport envelope unless it contains a separately validated C2PA asset.
+- Do not claim the high-level `c2patool` path has finalized the CAWG `referenced_assertions` hash for `c2pa.hash.data`; that needs lower-level signer integration.
 - Keep decrypted wallet presentations private by default. Service serialization must stay default-off behind `IIRY_SERIALIZE_PRESENTATIONS=1`.
 - Keep RP private keys, access certificates, registration certificates, and serialized wallet responses out of Git.
 

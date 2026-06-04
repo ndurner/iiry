@@ -66,7 +66,15 @@ IIRY-proof-YYYY-MM-DD-ABCD1234.iiry
 
 ## C2PA Status
 
-The CLI integrates with local `c2patool` when available. A production-quality iPhone implementation must use a real C2PA signing implementation or signer service; it must not hand-roll JPEG/JUMBF or claim-signature bytes. The Swift app currently creates and verifies the `.iiry` carrier using the same proof and nonce code as the CLI, and treats embedded C2PA signing as an explicit integration boundary.
+The CLI integrates with local `c2patool` when available. It can emit a C2PA-augmented JPEG containing:
+
+- c2patool's real `c2pa.hash.data` hard binding,
+- a signed IIRY proof-bundle assertion,
+- the nonce payload that binds the Wallet proof request to the image-binding material.
+
+The high-level `c2patool` manifest API does not let this prototype safely precompute and insert the final CAWG `referenced_assertions` hashed URI for `c2pa.hash.data`; that value is produced during signing and may change between signing runs. A production-quality iPhone implementation must therefore use a real C2PA signing implementation or signer service that can finalize the CAWG identity assertion with the exact hard-binding URI/hash. It must not hand-roll JPEG/JUMBF or claim-signature bytes.
+
+The Swift app currently creates and verifies the `.iiry` carrier using the same proof and nonce code as the CLI, and treats embedded C2PA signing as an explicit integration boundary.
 
 This is intentional. A fake or unsigned C2PA-looking blob would be worse than no C2PA claim in a security-conscious hackathon.
 

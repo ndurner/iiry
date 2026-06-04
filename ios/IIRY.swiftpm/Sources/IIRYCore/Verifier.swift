@@ -62,7 +62,7 @@ public enum IIRYVerifier {
         ))
         checks.append(.init(
             id: "cawg_hard_binding_reference",
-            label: "CAWG references hard binding",
+            label: "Proof references asset-binding material",
             passed: proof.cawg.referencedAssertions.contains {
                 $0.url == IIRYConstants.hardBindingReferenceURL &&
                 $0.hashB64URL == proof.asset.bindingMaterialSHA256B64URL
