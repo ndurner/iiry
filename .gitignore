@@ -4,6 +4,8 @@ scratch/
 .DS_Store
 .env
 .venv/
+__pycache__/
+*.py[cod]
 service/data/
 service/secrets/*
 !service/secrets/.gitkeep
