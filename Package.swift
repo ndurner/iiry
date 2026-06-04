@@ -5,8 +5,7 @@ import PackageDescription
 let package = Package(
     name: "IIRY",
     platforms: [
-        .macOS(.v15),
-        .iOS(.v17)
+        .macOS(.v15)
     ],
     products: [
         .library(name: "IIRYCore", targets: ["IIRYCore"]),
@@ -20,7 +19,7 @@ let package = Package(
         .executableTarget(
             name: "IIRYCLI",
             dependencies: ["IIRYCore"],
-            path: "Sources/IIRYCLI"
+            path: "cli/Sources/IIRYCLI"
         ),
         .testTarget(
             name: "IIRYCoreTests",

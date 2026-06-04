@@ -41,7 +41,7 @@
   <key>NSPhotoLibraryAddUsageDescription</key>
   <string>IIRY saves a verification receipt image when you ask it to keep a record.</string>
   <key>NSPhotoLibraryUsageDescription</key>
-  <string>IIRY imports screenshots you select for identity-signal verification.</string>
+  <string>IIRY imports JPEG images you select for identity-signal verification.</string>
   <key>UTExportedTypeDeclarations</key>
   <array>
     <dict>
@@ -51,7 +51,7 @@
       <string>IIRY Proof</string>
       <key>UTTypeConformsTo</key>
       <array>
-        <string>public.json</string>
+        <string>public.data</string>
       </array>
       <key>UTTypeTagSpecification</key>
       <dict>

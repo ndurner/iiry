@@ -37,20 +37,17 @@ public struct IIRYNoncePayload: Codable, Equatable {
     public var version: Int
     public var randomNonceB64URL: String
     public var assetBindingSHA256B64URL: String
-    public var requestContextSHA256B64URL: String
 
     public init(
         type: String = IIRYConstants.nonceType,
-        version: Int = 1,
+        version: Int = 2,
         randomNonceB64URL: String,
-        assetBindingSHA256B64URL: String,
-        requestContextSHA256B64URL: String
+        assetBindingSHA256B64URL: String
     ) {
         self.type = type
         self.version = version
         self.randomNonceB64URL = randomNonceB64URL
         self.assetBindingSHA256B64URL = assetBindingSHA256B64URL
-        self.requestContextSHA256B64URL = requestContextSHA256B64URL
     }
 }
 
@@ -147,7 +144,6 @@ public struct IIRYProofBundle: Codable, Equatable {
     public var type: String
     public var version: Int
     public var createdAt: String
-    public var requestText: String?
     public var asset: IIRYAssetBinding
     public var noncePayload: IIRYNoncePayload
     public var cawg: IIRYCAWGAssertion
@@ -158,7 +154,6 @@ public struct IIRYProofBundle: Codable, Equatable {
         type: String = IIRYConstants.proofBundleType,
         version: Int = 1,
         createdAt: String,
-        requestText: String? = nil,
         asset: IIRYAssetBinding,
         noncePayload: IIRYNoncePayload,
         cawg: IIRYCAWGAssertion,
@@ -168,7 +163,6 @@ public struct IIRYProofBundle: Codable, Equatable {
         self.type = type
         self.version = version
         self.createdAt = createdAt
-        self.requestText = requestText
         self.asset = asset
         self.noncePayload = noncePayload
         self.cawg = cawg

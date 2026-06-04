@@ -13,12 +13,11 @@ import Testing
     let random = Data(repeating: 0x42, count: 32)
     let prepared = try IIRYProofBuilder.prepare(
         imageData: image,
-        requestText: "Is it really you?",
         now: Date(timeIntervalSince1970: 1_780_416_000),
         randomNonce: random
     )
 
-    #expect(prepared.carrier.suggestedFileName == "IIRY-proof-2026-06-02-QKJCQKJC.iiry")
+    #expect(prepared.carrier.suggestedFileName == "IIRY-Commitment-2026-06-02-QKJCQKJC.jpg.c2pa.cawg.iiry")
     #expect(prepared.proof.noncePayload == (try IIRYNonce.decode(prepared.nonce)))
     #expect(prepared.proof.openID4VP.nonce == prepared.nonce)
     #expect(prepared.proof.cawg.sigType == IIRYConstants.cawgOpenID4VPSigType)

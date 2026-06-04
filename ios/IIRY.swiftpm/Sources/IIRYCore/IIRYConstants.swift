@@ -3,8 +3,9 @@ import Foundation
 public enum IIRYConstants {
     public static let namespace = "io.github.ndurner.iiry"
     public static let cawgOpenID4VPSigType = "io.github.ndurner.iiry.cawg.openid4vp.holder-binding.v1"
-    public static let nonceType = "io.github.ndurner.iiry.openid4vp-nonce.v1"
+    public static let nonceType = "io.github.ndurner.iiry.openid4vp-nonce.v2"
     public static let proofBundleType = "io.github.ndurner.iiry.proof-bundle.v1"
+    public static let proofBundleAssertionLabel = "io.github.ndurner.iiry.proof-bundle"
     public static let carrierType = "io.github.ndurner.iiry.carrier.v1"
     public static let carrierExtension = "iiry"
     public static let carrierUTType = "de.ndurner.iiry.proof"

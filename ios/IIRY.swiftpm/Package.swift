@@ -1,8 +1,11 @@
 // swift-tools-version: 5.9
 
 import PackageDescription
+#if canImport(AppleProductTypes)
 import AppleProductTypes
+#endif
 
+#if canImport(AppleProductTypes)
 let package = Package(
     name: "IIRY",
     platforms: [
@@ -43,3 +46,21 @@ let package = Package(
         )
     ]
 )
+#else
+let package = Package(
+    name: "IIRY",
+    platforms: [
+        .macOS(.v14),
+        .iOS(.v17)
+    ],
+    products: [
+        .library(name: "IIRYCore", targets: ["IIRYCore"])
+    ],
+    targets: [
+        .target(
+            name: "IIRYCore",
+            path: "Sources/IIRYCore"
+        )
+    ]
+)
+#endif

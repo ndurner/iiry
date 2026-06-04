@@ -59,18 +59,22 @@ final class IIRYAppModel {
         do {
             let data = try Data(contentsOf: url)
             if url.pathExtension.lowercased() == IIRYConstants.carrierExtension {
-                let importedCarrier = try IIRYProofBuilder.decodeCarrier(data)
-                carrier = importedCarrier
-                selectedImage = UIImage(data: try Base64URL.decode(importedCarrier.imageB64URL))
-                verificationReport = try IIRYVerifier.verifyCarrier(importedCarrier)
-                statusMessage = "Proof opened"
+                do {
+                    let importedCarrier = try IIRYProofBuilder.decodeCarrier(data)
+                    carrier = importedCarrier
+                    selectedImage = UIImage(data: try Base64URL.decode(importedCarrier.imageB64URL))
+                    verificationReport = try IIRYVerifier.verifyCarrier(importedCarrier)
+                    statusMessage = "Proof opened"
+                } catch {
+                    try await importC2PAJPEG(data, fileName: url.lastPathComponent)
+                }
             } else {
-                let prepared = try IIRYProofBuilder.prepare(imageData: data, requestText: requestText)
+                let prepared = try IIRYProofBuilder.prepare(imageData: data)
                 carrier = prepared.carrier
                 selectedImage = UIImage(data: data)
                 verificationReport = try IIRYVerifier.verifyCarrier(prepared.carrier)
                 pendingSession = nil
-                statusMessage = "Screenshot prepared"
+                statusMessage = "Image commitment prepared"
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -103,7 +107,7 @@ final class IIRYAppModel {
 
     func startWalletFlow() async {
         guard let carrier else {
-            errorMessage = "Import a screenshot first."
+            errorMessage = "Import a JPEG first."
             return
         }
         isBusy = true
@@ -166,7 +170,15 @@ final class IIRYAppModel {
             self.selectedImage = UIImage(data: try Base64URL.decode(updated.imageB64URL))
             self.verificationReport = try IIRYVerifier.verifyCarrier(updated)
             self.statusMessage = "Wallet proof attached"
-            shareCarrier()
+            do {
+                let signed = try await embedC2PAJPEG(carrier: updated)
+                let url = try writeTempData(signed.jpegData, fileName: updated.suggestedFileName)
+                self.statusMessage = "C2PA JPEG ready"
+                self.shareItem = IIRYShareItem(url: url)
+            } catch {
+                self.errorMessage = "C2PA signing unavailable: \(error.localizedDescription)"
+                shareCarrier()
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -195,12 +207,72 @@ final class IIRYAppModel {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "nonce": carrier.proof.openID4VP.nonce,
-            "request_context": carrier.proof.requestText ?? ""
+            "nonce": carrier.proof.openID4VP.nonce
         ])
         let (data, response) = try await URLSession.shared.data(for: request)
         try validateHTTP(response, data: data)
         return try JSONDecoder().decode(PresentationSession.self, from: data)
+    }
+
+    private func importC2PAJPEG(_ data: Data, fileName: String) async throws {
+        let inspection = try await inspectC2PAJPEG(imageData: data)
+        let proof = try IIRYC2PAInspectionVerifier.extractProofBundle(fromDetailedJSON: inspection.detailedJSON)
+        let report = try IIRYC2PAInspectionVerifier.verifyC2PAAsset(
+            imageData: data,
+            detailedJSON: inspection.detailedJSON
+        )
+        carrier = IIRYCarrier(
+            suggestedFileName: fileName,
+            imageB64URL: Base64URL.encode(data),
+            proof: proof
+        )
+        selectedImage = UIImage(data: data)
+        verificationReport = report
+        pendingSession = nil
+        statusMessage = "C2PA proof opened"
+    }
+
+    private func embedC2PAJPEG(carrier: IIRYCarrier) async throws -> C2PAEmbedResult {
+        guard let url = URL(string: "\(serviceBaseURL)/api/c2pa/embed") else {
+            throw IIRYError.commandFailed("Invalid service URL")
+        }
+        let imageData = try Base64URL.decode(carrier.imageB64URL)
+        let manifestData = try IIRYC2PAManifestBuilder.manifestData(for: carrier, pretty: true)
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "image_b64url": Base64URL.encode(imageData),
+            "manifest_json_b64url": Base64URL.encode(manifestData),
+            "suggested_file_name": carrier.suggestedFileName
+        ])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateHTTP(response, data: data)
+        let payload = try JSONDecoder().decode(C2PAEmbedPayload.self, from: data)
+        return C2PAEmbedResult(
+            jpegData: try Base64URL.decode(payload.jpegB64URL),
+            detailedJSON: try Base64URL.decode(payload.c2patoolReportJSONB64URL),
+            validationState: payload.validationState
+        )
+    }
+
+    private func inspectC2PAJPEG(imageData: Data) async throws -> C2PAInspectionResult {
+        guard let url = URL(string: "\(serviceBaseURL)/api/c2pa/inspect") else {
+            throw IIRYError.commandFailed("Invalid service URL")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "image_b64url": Base64URL.encode(imageData)
+        ])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateHTTP(response, data: data)
+        let payload = try JSONDecoder().decode(C2PAInspectionPayload.self, from: data)
+        return C2PAInspectionResult(
+            detailedJSON: try Base64URL.decode(payload.c2patoolReportJSONB64URL),
+            validationState: payload.validationState
+        )
     }
 
     private func walletResponse(state: String, token: String) async throws -> WalletResponsePayload {
@@ -260,6 +332,39 @@ struct PresentationSession: Decodable, Equatable {
 struct WalletResponsePayload {
     let decodedResponseJSON: Data
     let verification: WalletVerificationSummary?
+}
+
+struct C2PAEmbedPayload: Decodable {
+    let jpegB64URL: String
+    let c2patoolReportJSONB64URL: String
+    let validationState: String?
+
+    enum CodingKeys: String, CodingKey {
+        case jpegB64URL = "jpeg_b64url"
+        case c2patoolReportJSONB64URL = "c2patool_report_json_b64url"
+        case validationState = "validation_state"
+    }
+}
+
+struct C2PAInspectionPayload: Decodable {
+    let c2patoolReportJSONB64URL: String
+    let validationState: String?
+
+    enum CodingKeys: String, CodingKey {
+        case c2patoolReportJSONB64URL = "c2patool_report_json_b64url"
+        case validationState = "validation_state"
+    }
+}
+
+struct C2PAEmbedResult {
+    let jpegData: Data
+    let detailedJSON: Data
+    let validationState: String?
+}
+
+struct C2PAInspectionResult {
+    let detailedJSON: Data
+    let validationState: String?
 }
 
 struct IIRYShareItem: Identifiable, Equatable {
@@ -323,7 +428,7 @@ struct HeroPanel: View {
                     .font(.system(size: 18, weight: .semibold, design: .rounded))
                     .foregroundStyle(IIRYPalette.plum)
 
-                Text("A wallet-backed signal for screenshots: fresh challenge, image binding, and verified presentation checks.")
+                Text("A wallet-backed signal for challenged images: fresh presentation, image binding, and verification checks.")
                     .font(.system(size: 15, weight: .medium, design: .rounded))
                     .foregroundStyle(IIRYPalette.ink.opacity(0.70))
                     .lineSpacing(2)
@@ -365,11 +470,11 @@ struct IntakePanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionTitle(title: "Prepare Screenshot", detail: "JPEG or IIRY")
+            SectionTitle(title: "Prepare Image", detail: "JPEG or IIRY")
             Button {
                 model.showsImporter = true
             } label: {
-                Label("Choose screenshot", systemImage: "photo.badge.plus")
+                Label("Choose JPEG", systemImage: "photo.badge.plus")
             }
             .buttonStyle(IIRYSecondaryButtonStyle())
         }

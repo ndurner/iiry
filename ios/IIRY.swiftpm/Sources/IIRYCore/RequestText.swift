@@ -11,7 +11,7 @@ public enum IIRYFileNames {
     public static func proofFileName(date: Date, noncePayload: IIRYNoncePayload) -> String {
         let random = (try? Base64URL.decode(noncePayload.randomNonceB64URL)) ?? Data()
         let code = (try? shortCode(data: random)) ?? "UNKNOWN"
-        return "IIRY-proof-\(IIRYDateFormatting.shortDateString(from: date))-\(code).\(IIRYConstants.carrierExtension)"
+        return "IIRY-Commitment-\(IIRYDateFormatting.shortDateString(from: date))-\(code).jpg.c2pa.cawg.\(IIRYConstants.carrierExtension)"
     }
 
     public static func shortCode(data: Data) throws -> String {

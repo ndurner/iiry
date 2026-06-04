@@ -7,8 +7,6 @@ public enum IIRYVerifier {
     }
 
     public static func verify(proof: IIRYProofBundle, imageData: Data) throws -> IIRYVerificationReport {
-        var checks: [IIRYVerificationCheck] = []
-
         let assetSHA = Hashing.sha256(imageData)
         let material = IIRYAssetBindingMaterial(
             mediaType: proof.asset.mediaType,
@@ -16,59 +14,93 @@ public enum IIRYVerifier {
             assetSHA256B64URL: Base64URL.encode(assetSHA)
         )
         let materialDigest = Hashing.sha256(try JSONCoding.canonicalData(material))
-        let decodedNonce = try? IIRYNonce.decode(proof.openID4VP.nonce)
 
-        checks.append(.init(
-            id: "carrier_type",
-            label: "IIRY carrier type",
-            passed: proof.type == IIRYConstants.proofBundleType,
-            detail: proof.type
-        ))
-        checks.append(.init(
-            id: "asset_hash",
-            label: "Image bytes match proof hash",
-            passed: proof.asset.sha256B64URL == Base64URL.encode(assetSHA),
-            detail: proof.asset.sha256B64URL
-        ))
-        checks.append(.init(
-            id: "asset_binding",
-            label: "Asset binding material matches",
-            passed: proof.asset.bindingMaterialSHA256B64URL == Base64URL.encode(materialDigest),
-            detail: proof.asset.bindingMaterialSHA256B64URL
-        ))
-        checks.append(.init(
-            id: "nonce_decodes",
-            label: "OpenID4VP nonce decodes",
-            passed: decodedNonce != nil,
-            detail: decodedNonce?.type
-        ))
-        checks.append(.init(
-            id: "nonce_payload",
-            label: "Nonce payload matches proof",
-            passed: decodedNonce == proof.noncePayload,
-            detail: proof.noncePayload.type
-        ))
-        checks.append(.init(
-            id: "nonce_asset_binding",
-            label: "Nonce binds asset binding digest",
-            passed: proof.noncePayload.assetBindingSHA256B64URL == Base64URL.encode(materialDigest),
-            detail: proof.noncePayload.assetBindingSHA256B64URL
-        ))
-        checks.append(.init(
-            id: "cawg_sig_type",
-            label: "CAWG extension sig_type",
-            passed: proof.cawg.sigType == IIRYConstants.cawgOpenID4VPSigType,
-            detail: proof.cawg.sigType
-        ))
-        checks.append(.init(
-            id: "cawg_hard_binding_reference",
-            label: "Proof references asset-binding material",
-            passed: proof.cawg.referencedAssertions.contains {
-                $0.url == IIRYConstants.hardBindingReferenceURL &&
-                $0.hashB64URL == proof.asset.bindingMaterialSHA256B64URL
-            },
-            detail: IIRYConstants.hardBindingReferenceURL
-        ))
+        var checks: [IIRYVerificationCheck] = [
+            .init(
+                id: "carrier_type",
+                label: "IIRY carrier type",
+                passed: proof.type == IIRYConstants.proofBundleType,
+                detail: proof.type
+            ),
+            .init(
+                id: "asset_hash",
+                label: "Image bytes match proof hash",
+                passed: proof.asset.sha256B64URL == Base64URL.encode(assetSHA),
+                detail: proof.asset.sha256B64URL
+            ),
+            .init(
+                id: "asset_binding",
+                label: "Asset binding material matches",
+                passed: proof.asset.bindingMaterialSHA256B64URL == Base64URL.encode(materialDigest),
+                detail: proof.asset.bindingMaterialSHA256B64URL
+            )
+        ]
+        checks.append(contentsOf: try proofChecks(proof: proof, materialDigest: materialDigest))
+        return IIRYVerificationReport(checks: checks)
+    }
+
+    public static func verifyDetachedProof(_ proof: IIRYProofBundle) throws -> IIRYVerificationReport {
+        let material = IIRYAssetBindingMaterial(
+            mediaType: proof.asset.mediaType,
+            byteLength: proof.asset.byteLength,
+            assetSHA256B64URL: proof.asset.sha256B64URL
+        )
+        let materialDigest = Hashing.sha256(try JSONCoding.canonicalData(material))
+        var checks: [IIRYVerificationCheck] = [
+            .init(
+                id: "proof_type",
+                label: "IIRY proof-bundle type",
+                passed: proof.type == IIRYConstants.proofBundleType,
+                detail: proof.type
+            ),
+            .init(
+                id: "proof_asset_binding",
+                label: "Proof asset binding material is self-consistent",
+                passed: proof.asset.bindingMaterialSHA256B64URL == Base64URL.encode(materialDigest),
+                detail: proof.asset.bindingMaterialSHA256B64URL
+            )
+        ]
+        checks.append(contentsOf: try proofChecks(proof: proof, materialDigest: materialDigest))
+        return IIRYVerificationReport(checks: checks)
+    }
+
+    private static func proofChecks(proof: IIRYProofBundle, materialDigest: Data) throws -> [IIRYVerificationCheck] {
+        let decodedNonce = try? IIRYNonce.decode(proof.openID4VP.nonce)
+        var checks: [IIRYVerificationCheck] = [
+            .init(
+                id: "nonce_decodes",
+                label: "OpenID4VP nonce decodes",
+                passed: decodedNonce != nil,
+                detail: decodedNonce?.type
+            ),
+            .init(
+                id: "nonce_payload",
+                label: "Nonce payload matches proof",
+                passed: decodedNonce == proof.noncePayload,
+                detail: proof.noncePayload.type
+            ),
+            .init(
+                id: "nonce_asset_binding",
+                label: "Nonce binds asset binding digest",
+                passed: proof.noncePayload.assetBindingSHA256B64URL == Base64URL.encode(materialDigest),
+                detail: proof.noncePayload.assetBindingSHA256B64URL
+            ),
+            .init(
+                id: "cawg_sig_type",
+                label: "CAWG extension sig_type",
+                passed: proof.cawg.sigType == IIRYConstants.cawgOpenID4VPSigType,
+                detail: proof.cawg.sigType
+            ),
+            .init(
+                id: "cawg_hard_binding_reference",
+                label: "Proof references asset-binding material",
+                passed: proof.cawg.referencedAssertions.contains {
+                    $0.url == IIRYConstants.hardBindingReferenceURL &&
+                    $0.hashB64URL == proof.asset.bindingMaterialSHA256B64URL
+                },
+                detail: IIRYConstants.hardBindingReferenceURL
+            )
+        ]
 
         if let presentation = proof.openID4VP.compactPresentation {
             let presentationNonce = try? PresentationExtractor.nonce(fromPresentation: presentation)
@@ -103,6 +135,6 @@ public enum IIRYVerifier {
             ))
         }
 
-        return IIRYVerificationReport(checks: checks)
+        return checks
     }
 }

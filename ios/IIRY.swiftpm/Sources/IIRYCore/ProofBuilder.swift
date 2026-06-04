@@ -15,7 +15,6 @@ public struct IIRYPreparedProof {
 public enum IIRYProofBuilder {
     public static func prepare(
         imageData: Data,
-        requestText: String? = nil,
         now: Date = Date(),
         randomNonce: Data? = nil
     ) throws -> IIRYPreparedProof {
@@ -27,10 +26,8 @@ public enum IIRYProofBuilder {
         )
         let materialData = try JSONCoding.canonicalData(material)
         let materialDigest = Hashing.sha256(materialData)
-        let requestContextDigest = Hashing.sha256(Data((requestText ?? "").utf8))
         let nonceResult = try IIRYNonce.create(
             assetBindingSHA256: materialDigest,
-            requestContextSHA256: requestContextDigest,
             randomNonce: randomNonce
         )
 
@@ -46,7 +43,6 @@ public enum IIRYProofBuilder {
         )
         let proof = IIRYProofBundle(
             createdAt: IIRYDateFormatting.iso8601String(from: now),
-            requestText: requestText,
             asset: asset,
             noncePayload: nonceResult.payload,
             cawg: IIRYCAWGAssertion(referencedAssertions: [reference]),
