@@ -592,6 +592,7 @@ struct ActiveProofView: View {
     let carrier: IIRYCarrier
     let image: UIImage
     @State private var showsTechnicalChecks = false
+    @State private var showsImageInspector = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -626,6 +627,21 @@ struct ActiveProofView: View {
                         .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(IIRYPalette.line, lineWidth: 1))
+                        .overlay(alignment: .bottomTrailing) {
+                            Label("Inspect", systemImage: "plus.magnifyingglass")
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(IIRYPalette.ink.opacity(0.82), in: Capsule())
+                                .padding(10)
+                        }
+                        .contentShape(RoundedRectangle(cornerRadius: 8))
+                        .onTapGesture {
+                            showsImageInspector = true
+                        }
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityLabel("Open screenshot full screen")
 
                     if let report = model.verificationReport {
                         Button {
@@ -664,6 +680,9 @@ struct ActiveProofView: View {
             .padding(.top, 18)
             .padding(.bottom, 18)
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+        }
+        .fullScreenCover(isPresented: $showsImageInspector) {
+            ImageInspectorView(image: image, title: model.commitmentDisplayMode == .receivedVerification ? "Verified image" : "Committed image")
         }
     }
 
@@ -790,6 +809,138 @@ struct CompactStatusPanel: View {
         .padding(.vertical, 12)
         .background(Color.white.opacity(0.68), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(IIRYPalette.line, lineWidth: 1))
+    }
+}
+
+struct ImageInspectorView: View {
+    let image: UIImage
+    let title: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack {
+            Color(red: 0.03, green: 0.05, blue: 0.08)
+                .ignoresSafeArea()
+
+            ZoomableImageView(image: image)
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("IIRY")
+                            .font(.system(size: 15, weight: .black, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.72))
+                        Text(title)
+                            .font(.system(size: 22, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .black))
+                            .foregroundStyle(IIRYPalette.ink)
+                            .frame(width: 44, height: 44)
+                            .background(.white.opacity(0.92), in: Circle())
+                    }
+                    .accessibilityLabel("Close image inspector")
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 14)
+                .padding(.bottom, 12)
+                .background(.ultraThinMaterial.opacity(0.82))
+
+                Spacer()
+
+                HStack(spacing: 8) {
+                    Image(systemName: "hand.draw")
+                    Text("Pinch to zoom. Double-tap to inspect.")
+                }
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.82))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(IIRYPalette.ink.opacity(0.78), in: Capsule())
+                .padding(.bottom, 18)
+            }
+        }
+    }
+}
+
+struct ZoomableImageView: UIViewRepresentable {
+    let image: UIImage
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> UIScrollView {
+        let scrollView = UIScrollView()
+        scrollView.delegate = context.coordinator
+        scrollView.backgroundColor = .clear
+        scrollView.minimumZoomScale = 1
+        scrollView.maximumZoomScale = 7
+        scrollView.bouncesZoom = true
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.decelerationRate = .fast
+        scrollView.contentInsetAdjustmentBehavior = .never
+
+        let imageView = UIImageView(image: image)
+        imageView.contentMode = .scaleAspectFit
+        imageView.isUserInteractionEnabled = true
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.addSubview(imageView)
+
+        NSLayoutConstraint.activate([
+            imageView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+            imageView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+            imageView.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            imageView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            imageView.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
+            imageView.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor)
+        ])
+
+        let doubleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleDoubleTap(_:)))
+        doubleTap.numberOfTapsRequired = 2
+        scrollView.addGestureRecognizer(doubleTap)
+
+        context.coordinator.imageView = imageView
+        context.coordinator.scrollView = scrollView
+        return scrollView
+    }
+
+    func updateUIView(_ scrollView: UIScrollView, context: Context) {
+        context.coordinator.imageView?.image = image
+    }
+
+    final class Coordinator: NSObject, UIScrollViewDelegate {
+        weak var imageView: UIImageView?
+        weak var scrollView: UIScrollView?
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+            imageView
+        }
+
+        @objc
+        func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
+            guard let scrollView else {
+                return
+            }
+            if scrollView.zoomScale > scrollView.minimumZoomScale + 0.1 {
+                scrollView.setZoomScale(scrollView.minimumZoomScale, animated: true)
+            } else {
+                let point = recognizer.location(in: imageView)
+                let scale = min(3, scrollView.maximumZoomScale)
+                let size = CGSize(width: scrollView.bounds.width / scale, height: scrollView.bounds.height / scale)
+                let origin = CGPoint(x: point.x - size.width / 2, y: point.y - size.height / 2)
+                scrollView.zoom(to: CGRect(origin: origin, size: size), animated: true)
+            }
+        }
     }
 }
 
