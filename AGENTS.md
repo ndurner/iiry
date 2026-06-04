@@ -34,7 +34,7 @@ Current extension identifiers:
 
 ```text
 io.github.ndurner.iiry.cawg.openid4vp.holder-binding.v1
-io.github.ndurner.iiry.openid4vp-nonce.v1
+io.github.ndurner.iiry.openid4vp-nonce.v2
 io.github.ndurner.iiry.proof-bundle.v1
 io.github.ndurner.iiry.carrier.v1
 ```
@@ -64,3 +64,5 @@ The wallet signed the screenshot.
 ```
 
 The wallet signs a holder-binding proof over the OpenID4VP nonce. IIRY makes that nonce commit to the C2PA/image-binding context.
+
+The human challenge text (`Is it really you?` plus date and short nonce code) must be visible in the image and reviewed by the receiver. Do not reintroduce a hidden request-context digest unless the security model is deliberately changed and documented.
