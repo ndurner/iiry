@@ -5,7 +5,7 @@ import Testing
 @Test func requestTextUsesShortDateAndNonceCode() throws {
     let date = Date(timeIntervalSince1970: 1_780_416_000)
     let text = try IIRYRequestText.make(date: date, nonceCode: "ABC123XY")
-    #expect(text == "Is it really you?\n(2026-06-02 ABC123XY)")
+    #expect(text == "Is it really you?\n(26-06-02 ABC123XY)")
 }
 
 @Test func preparedProofCarriesDecodableNonce() throws {
@@ -74,6 +74,76 @@ import Testing
     #expect(report.checks.first { $0.id == "presentation_nonce" }?.passed == true)
     #expect(report.checks.first { $0.id == "wallet_service_verification" }?.passed == true)
     #expect(report.overallPassed == true)
+}
+
+@Test func c2paProfileRoundTripsAndKeepsVisualJPEGStable() throws {
+    let image = Data([0xff, 0xd8, 0xff, 0xd9])
+    let carrier = try preparedCarrierWithPresentation(image: image)
+
+    let signed = try IIRYC2PAAssetProcessor.signJPEG(carrier: carrier)
+    let stripped = try IIRYJPEGC2PA.stripC2PASegments(fromJPEG: signed.jpegData)
+    let report = try IIRYC2PAAssetProcessor.verifyJPEG(signed.jpegData)
+
+    #expect(stripped == image)
+    #expect(report.checks.first { $0.id == "c2pa_data_hash" }?.passed == true)
+    #expect(report.checks.first { $0.id == "c2pa_claim_signature" }?.passed == true)
+    #expect(report.checks.first { $0.id == "iiry_claim_assertion_hashes" }?.passed == true)
+    #expect(report.checks.first { $0.id == "asset_hash" }?.passed == true)
+}
+
+@Test func c2paProfileDetectsVisualByteReplay() throws {
+    let image = Data([0xff, 0xd8, 0x01, 0xff, 0xd9])
+    let carrier = try preparedCarrierWithPresentation(image: image)
+    let signed = try IIRYC2PAAssetProcessor.signJPEG(carrier: carrier)
+
+    var tampered = signed.jpegData
+    tampered[tampered.count - 3] = 0x02
+    let report = try IIRYC2PAAssetProcessor.verifyJPEG(tampered)
+
+    #expect(report.checks.first { $0.id == "c2pa_data_hash" }?.passed == false)
+    #expect(report.checks.first { $0.id == "asset_hash" }?.passed == false)
+}
+
+@Test func c2paProfileDetectsSignatureTampering() throws {
+    let image = Data([0xff, 0xd8, 0xff, 0xd9])
+    let carrier = try preparedCarrierWithPresentation(image: image)
+    let signed = try IIRYC2PAAssetProcessor.signJPEG(carrier: carrier)
+    var tampered = signed.jpegData
+    guard let range = try IIRYJPEGC2PA.c2paSegmentRanges(inJPEG: tampered).last else {
+        throw IIRYError.commandFailed("C2PA APP11 segment not found")
+    }
+    let signatureByteOffset = Int(range.start + range.length - 1)
+    tampered[signatureByteOffset] ^= 0x01
+
+    let report = try IIRYC2PAAssetProcessor.verifyJPEG(tampered)
+    #expect(report.checks.first { $0.id == "c2pa_claim_signature" }?.passed == false)
+}
+
+private func preparedCarrierWithPresentation(image: Data) throws -> IIRYCarrier {
+    let prepared = try IIRYProofBuilder.prepare(
+        imageData: image,
+        randomNonce: Data(repeating: 0x33, count: 32)
+    )
+    let presentation = fakePresentation(nonce: prepared.nonce)
+    let responseData = try JSONCoding.objectData([
+        "state": "test-state",
+        "vp_token": [
+            "pid-sd-jwt": [presentation]
+        ]
+    ])
+    return try IIRYProofBuilder.attachPresentation(
+        carrier: prepared.carrier,
+        decodedResponseJSON: responseData,
+        walletVerification: WalletVerificationSummary(
+            issuerSignature: true,
+            issuerCertificateTrusted: true,
+            disclosuresMatchIssuerCommitments: true,
+            holderSignature: true,
+            nonceMatchesChallenge: true,
+            audienceIsThisVerifier: true,
+            sdHashBindsPresentation: true
+        )
+    )
 }
 
 private func fakePresentation(nonce: String) -> String {

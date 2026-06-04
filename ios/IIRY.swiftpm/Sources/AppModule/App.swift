@@ -1,4 +1,5 @@
 import IIRYCore
+import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
@@ -24,8 +25,11 @@ extension UTType {
 @Observable
 @MainActor
 final class IIRYAppModel {
-    var serviceBaseURL = "https://iiry.ndurner.de"
-    var requestText = (try? IIRYRequestText.make()) ?? "Is it really you?"
+    static let defaultServiceBaseURL = "https://iiry.ndurner.de"
+    private static let serviceBaseURLKey = "iiry.serviceBaseURL"
+
+    var serviceBaseURL: String
+    var requestText: String
     var carrier: IIRYCarrier?
     var pendingSession: PresentationSession?
     var verificationReport: IIRYVerificationReport?
@@ -34,7 +38,13 @@ final class IIRYAppModel {
     var errorMessage: String?
     var isBusy = false
     var showsImporter = false
+    var showsSettings = false
     var shareItem: IIRYShareItem?
+
+    init() {
+        self.serviceBaseURL = UserDefaults.standard.string(forKey: Self.serviceBaseURLKey) ?? Self.defaultServiceBaseURL
+        self.requestText = (try? IIRYRequestText.make()) ?? "Is it really you?"
+    }
 
     var hasPreparedProof: Bool {
         carrier != nil
@@ -66,29 +76,56 @@ final class IIRYAppModel {
                     verificationReport = try IIRYVerifier.verifyCarrier(importedCarrier)
                     statusMessage = "Proof opened"
                 } catch {
-                    try await importC2PAJPEG(data, fileName: url.lastPathComponent)
+                    try importC2PAJPEG(data, fileName: url.lastPathComponent)
                 }
             } else {
-                let prepared = try IIRYProofBuilder.prepare(imageData: data)
-                carrier = prepared.carrier
-                selectedImage = UIImage(data: data)
-                verificationReport = try IIRYVerifier.verifyCarrier(prepared.carrier)
-                pendingSession = nil
-                statusMessage = "Image commitment prepared"
+                try prepareImage(data)
             }
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    func shareRequest() {
+    func importPhotoItem(_ item: PhotosPickerItem?) async {
+        guard let item else {
+            return
+        }
+        isBusy = true
+        errorMessage = nil
+        defer { isBusy = false }
+
         do {
-            refreshRequestText()
-            let url = try writeTempText(requestText, fileName: "IIRY-request.txt")
-            shareItem = IIRYShareItem(url: url)
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                throw IIRYError.invalidCarrier("Selected photo did not provide image data")
+            }
+            try prepareImage(data)
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func shareRequest() {
+        refreshRequestText()
+        shareItem = IIRYShareItem(activityItems: [requestText])
+    }
+
+    func saveServiceEndpoint(_ value: String) {
+        do {
+            let normalized = try normalizedServiceEndpoint(value)
+            serviceBaseURL = normalized
+            UserDefaults.standard.set(normalized, forKey: Self.serviceBaseURLKey)
+            showsSettings = false
+            statusMessage = "Endpoint updated"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func resetServiceEndpoint() {
+        serviceBaseURL = Self.defaultServiceBaseURL
+        UserDefaults.standard.removeObject(forKey: Self.serviceBaseURLKey)
+        showsSettings = false
+        statusMessage = "Endpoint reset"
     }
 
     func shareCarrier() {
@@ -99,7 +136,7 @@ final class IIRYAppModel {
         do {
             let data = try IIRYProofBuilder.carrierData(carrier)
             let url = try writeTempData(data, fileName: carrier.suggestedFileName)
-            shareItem = IIRYShareItem(url: url)
+            shareItem = IIRYShareItem(activityItems: [url])
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -117,19 +154,23 @@ final class IIRYAppModel {
         do {
             let session = try await createPresentationSession(for: carrier)
             pendingSession = session
-            statusMessage = "Opening wallet"
+            statusMessage = "Opening wallet to commit"
             guard let walletURL = URL(string: session.openWalletURL) else {
                 throw IIRYError.commandFailed("Invalid wallet URL from service")
             }
             await UIApplication.shared.open(walletURL)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = userFacingMessage(for: error)
         }
     }
 
     func handle(url: URL) async {
         if url.isFileURL {
             await importFile(url)
+            return
+        }
+        if url.scheme == "iiry", url.host == "share-image" {
+            await importSharedImage(url)
             return
         }
         guard url.scheme == "iiry", url.host == "wallet-callback" else {
@@ -171,10 +212,11 @@ final class IIRYAppModel {
             self.verificationReport = try IIRYVerifier.verifyCarrier(updated)
             self.statusMessage = "Wallet proof attached"
             do {
-                let signed = try await embedC2PAJPEG(carrier: updated)
+                let signed = try IIRYC2PAAssetProcessor.signJPEG(carrier: updated)
+                self.verificationReport = try IIRYC2PAAssetProcessor.verifyJPEG(signed.jpegData)
                 let url = try writeTempData(signed.jpegData, fileName: updated.suggestedFileName)
                 self.statusMessage = "C2PA JPEG ready"
-                self.shareItem = IIRYShareItem(url: url)
+                self.shareItem = IIRYShareItem(activityItems: [url])
             } catch {
                 self.errorMessage = "C2PA signing unavailable: \(error.localizedDescription)"
                 shareCarrier()
@@ -214,65 +256,73 @@ final class IIRYAppModel {
         return try JSONDecoder().decode(PresentationSession.self, from: data)
     }
 
-    private func importC2PAJPEG(_ data: Data, fileName: String) async throws {
-        let inspection = try await inspectC2PAJPEG(imageData: data)
-        let proof = try IIRYC2PAInspectionVerifier.extractProofBundle(fromDetailedJSON: inspection.detailedJSON)
-        let report = try IIRYC2PAInspectionVerifier.verifyC2PAAsset(
-            imageData: data,
-            detailedJSON: inspection.detailedJSON
-        )
+    private func importSharedImage(_ url: URL) async {
+        isBusy = true
+        errorMessage = nil
+        defer { isBusy = false }
+
+        do {
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            guard let pasteboardName = components?.queryItems?.first(where: { $0.name == "pasteboard" })?.value,
+                  !pasteboardName.isEmpty else {
+                throw IIRYError.invalidCarrier("Share extension did not include image handoff data")
+            }
+            let type = components?.queryItems?.first(where: { $0.name == "type" })?.value ?? UTType.data.identifier
+            guard let pasteboard = UIPasteboard(name: UIPasteboard.Name(rawValue: pasteboardName), create: false) else {
+                throw IIRYError.invalidCarrier("Shared image handoff expired")
+            }
+            guard let data = pasteboard.data(forPasteboardType: type)
+                ?? pasteboard.data(forPasteboardType: UTType.jpeg.identifier)
+                ?? pasteboard.data(forPasteboardType: UTType.png.identifier)
+                ?? pasteboard.data(forPasteboardType: UTType.data.identifier) else {
+                throw IIRYError.invalidCarrier("Shared image handoff did not contain image data")
+            }
+            try prepareImage(data)
+            pasteboard.items = []
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func importC2PAJPEG(_ data: Data, fileName: String) throws {
+        let manifestReport = try IIRYC2PAAssetProcessor.readManifestReport(fromJPEGData: data)
+        let proof = try IIRYC2PAInspectionVerifier.extractProofBundle(fromDetailedJSON: manifestReport)
+        let report = try IIRYC2PAAssetProcessor.verifyJPEG(data)
+        let visualData = try IIRYC2PAAssetProcessor.visualJPEGData(from: data)
         carrier = IIRYCarrier(
             suggestedFileName: fileName,
-            imageB64URL: Base64URL.encode(data),
+            imageB64URL: Base64URL.encode(visualData),
             proof: proof
         )
-        selectedImage = UIImage(data: data)
+        selectedImage = UIImage(data: visualData)
         verificationReport = report
         pendingSession = nil
         statusMessage = "C2PA proof opened"
     }
 
-    private func embedC2PAJPEG(carrier: IIRYCarrier) async throws -> C2PAEmbedResult {
-        guard let url = URL(string: "\(serviceBaseURL)/api/c2pa/embed") else {
-            throw IIRYError.commandFailed("Invalid service URL")
-        }
-        let imageData = try Base64URL.decode(carrier.imageB64URL)
-        let manifestData = try IIRYC2PAManifestBuilder.manifestData(for: carrier, pretty: true)
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "image_b64url": Base64URL.encode(imageData),
-            "manifest_json_b64url": Base64URL.encode(manifestData),
-            "suggested_file_name": carrier.suggestedFileName
-        ])
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try validateHTTP(response, data: data)
-        let payload = try JSONDecoder().decode(C2PAEmbedPayload.self, from: data)
-        return C2PAEmbedResult(
-            jpegData: try Base64URL.decode(payload.jpegB64URL),
-            detailedJSON: try Base64URL.decode(payload.c2patoolReportJSONB64URL),
-            validationState: payload.validationState
-        )
+    private func prepareImage(_ data: Data) throws {
+        let jpegData = try normalizedJPEGData(from: data)
+        let prepared = try IIRYProofBuilder.prepare(imageData: jpegData)
+        carrier = prepared.carrier
+        selectedImage = UIImage(data: jpegData)
+        verificationReport = nil
+        pendingSession = nil
+        statusMessage = isJPEG(data) ? "Image commitment prepared" : "Image converted to JPEG and prepared"
     }
 
-    private func inspectC2PAJPEG(imageData: Data) async throws -> C2PAInspectionResult {
-        guard let url = URL(string: "\(serviceBaseURL)/api/c2pa/inspect") else {
-            throw IIRYError.commandFailed("Invalid service URL")
+    private func normalizedJPEGData(from data: Data) throws -> Data {
+        if isJPEG(data) {
+            return data
         }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "image_b64url": Base64URL.encode(imageData)
-        ])
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try validateHTTP(response, data: data)
-        let payload = try JSONDecoder().decode(C2PAInspectionPayload.self, from: data)
-        return C2PAInspectionResult(
-            detailedJSON: try Base64URL.decode(payload.c2patoolReportJSONB64URL),
-            validationState: payload.validationState
-        )
+        guard let image = UIImage(data: data),
+              let jpeg = image.jpegData(compressionQuality: 0.92) else {
+            throw IIRYError.invalidCarrier("Selected file is not a readable image")
+        }
+        return jpeg
+    }
+
+    private func isJPEG(_ data: Data) -> Bool {
+        data.count >= 2 && data[0] == 0xff && data[1] == 0xd8
     }
 
     private func walletResponse(state: String, token: String) async throws -> WalletResponsePayload {
@@ -299,13 +349,41 @@ final class IIRYAppModel {
             throw IIRYError.commandFailed("No HTTP response")
         }
         guard (200..<300).contains(http.statusCode) else {
+            if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let error = object["error"] as? String ?? "HTTP \(http.statusCode)"
+                let details = object["details"] as? [String] ?? []
+                let detailText = details.isEmpty ? error : "\(error): \(details.joined(separator: "; "))"
+                throw IIRYError.commandFailed(detailText)
+            }
             let detail = String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)"
             throw IIRYError.commandFailed(detail)
         }
     }
 
-    private func writeTempText(_ text: String, fileName: String) throws -> URL {
-        try writeTempData(Data(text.utf8), fileName: fileName)
+    private func userFacingMessage(for error: Error) -> String {
+        if let urlError = error as? URLError, urlError.isCertificateOrTLSError {
+            return "The wallet service TLS certificate is not valid for \(serviceBaseURL). Fix the HTTPS certificate before using wallet handoff."
+        }
+        return error.localizedDescription
+    }
+
+    private func normalizedServiceEndpoint(_ value: String) throws -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let components = URLComponents(string: trimmed),
+              let scheme = components.scheme?.lowercased(),
+              let host = components.host,
+              !host.isEmpty else {
+            throw IIRYError.commandFailed("Enter a valid service URL.")
+        }
+        let localHosts = ["localhost", "127.0.0.1", "::1"]
+        guard scheme == "https" || (scheme == "http" && localHosts.contains(host.lowercased())) else {
+            throw IIRYError.commandFailed("Use HTTPS for remote wallet service endpoints.")
+        }
+        guard components.path.isEmpty || components.path == "/" else {
+            throw IIRYError.commandFailed("Enter the service origin only, without /api paths.")
+        }
+        return trimmed
     }
 
     private func writeTempData(_ data: Data, fileName: String) throws -> URL {
@@ -334,42 +412,9 @@ struct WalletResponsePayload {
     let verification: WalletVerificationSummary?
 }
 
-struct C2PAEmbedPayload: Decodable {
-    let jpegB64URL: String
-    let c2patoolReportJSONB64URL: String
-    let validationState: String?
-
-    enum CodingKeys: String, CodingKey {
-        case jpegB64URL = "jpeg_b64url"
-        case c2patoolReportJSONB64URL = "c2patool_report_json_b64url"
-        case validationState = "validation_state"
-    }
-}
-
-struct C2PAInspectionPayload: Decodable {
-    let c2patoolReportJSONB64URL: String
-    let validationState: String?
-
-    enum CodingKeys: String, CodingKey {
-        case c2patoolReportJSONB64URL = "c2patool_report_json_b64url"
-        case validationState = "validation_state"
-    }
-}
-
-struct C2PAEmbedResult {
-    let jpegData: Data
-    let detailedJSON: Data
-    let validationState: String?
-}
-
-struct C2PAInspectionResult {
-    let detailedJSON: Data
-    let validationState: String?
-}
-
-struct IIRYShareItem: Identifiable, Equatable {
+struct IIRYShareItem: Identifiable {
     let id = UUID()
-    let url: URL
+    let activityItems: [Any]
 }
 
 struct IIRYRootView: View {
@@ -395,7 +440,7 @@ struct IIRYRootView: View {
         }
         .fileImporter(
             isPresented: $model.showsImporter,
-            allowedContentTypes: [.jpeg, .iiryProof],
+            allowedContentTypes: [.image, .iiryProof],
             allowsMultipleSelection: false
         ) { result in
             Task {
@@ -405,7 +450,15 @@ struct IIRYRootView: View {
             }
         }
         .sheet(item: $model.shareItem) { item in
-            ShareSheet(activityItems: [item.url])
+            ShareSheet(activityItems: item.activityItems)
+        }
+        .sheet(isPresented: $model.showsSettings) {
+            EndpointSettingsView(
+                currentEndpoint: model.serviceBaseURL,
+                onSave: { model.saveServiceEndpoint($0) },
+                onReset: { model.resetServiceEndpoint() }
+            )
+            .presentationDetents([.medium])
         }
     }
 }
@@ -450,6 +503,15 @@ struct HeroPanel: View {
                 }
                 .buttonStyle(IIRYIconButtonStyle())
                 .accessibilityLabel("Refresh request nonce")
+
+                Button {
+                    model.showsSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(IIRYIconButtonStyle())
+                .accessibilityLabel("Settings")
             }
 
             Text(model.requestText)
@@ -465,16 +527,102 @@ struct HeroPanel: View {
     }
 }
 
+struct EndpointSettingsView: View {
+    let currentEndpoint: String
+    let onSave: (String) -> Void
+    let onReset: () -> Void
+    @State private var endpoint: String
+    @Environment(\.dismiss) private var dismiss
+
+    init(currentEndpoint: String, onSave: @escaping (String) -> Void, onReset: @escaping () -> Void) {
+        self.currentEndpoint = currentEndpoint
+        self.onSave = onSave
+        self.onReset = onReset
+        self._endpoint = State(initialValue: currentEndpoint)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                SectionTitle(title: "Settings", detail: "Wallet service")
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("API endpoint")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(IIRYPalette.ink.opacity(0.70))
+                    TextField("https://iiry.ndurner.de", text: $endpoint)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                        .padding(12)
+                        .background(Color.white.opacity(0.70), in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(IIRYPalette.line, lineWidth: 1))
+                }
+
+                Text("Use the service origin only. IIRY appends `/api/presentations` for the wallet flow.")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(IIRYPalette.ink.opacity(0.62))
+
+                HStack(spacing: 10) {
+                    Button {
+                        onSave(endpoint)
+                    } label: {
+                        Label("Save", systemImage: "checkmark")
+                    }
+                    .buttonStyle(IIRYPrimaryButtonStyle())
+
+                    Button {
+                        onReset()
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(IIRYIconButtonStyle())
+                    .accessibilityLabel("Reset endpoint")
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(18)
+            .background(IIRYBackdrop())
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close settings")
+                }
+            }
+        }
+    }
+}
+
 struct IntakePanel: View {
     @Bindable var model: IIRYAppModel
+    @State private var photoItem: PhotosPickerItem?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionTitle(title: "Prepare Image", detail: "JPEG or IIRY")
+            SectionTitle(title: "Prepare Image", detail: "Photos or file")
+            PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
+                Label("Choose from Photos", systemImage: "photo.badge.plus")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(IIRYSecondaryButtonStyle())
+            .onChange(of: photoItem) { _, newValue in
+                Task {
+                    await model.importPhotoItem(newValue)
+                    photoItem = nil
+                }
+            }
+
             Button {
                 model.showsImporter = true
             } label: {
-                Label("Choose JPEG", systemImage: "photo.badge.plus")
+                Label("Open IIRY or image file", systemImage: "folder")
             }
             .buttonStyle(IIRYSecondaryButtonStyle())
         }
@@ -488,8 +636,10 @@ struct VerificationPanel: View {
     let image: UIImage
 
     var body: some View {
+        let hasProof = model.verificationReport != nil
+
         VStack(alignment: .leading, spacing: 14) {
-            SectionTitle(title: "Verification", detail: carrier.suggestedFileName)
+            SectionTitle(title: hasProof ? "Verification" : "Commitment", detail: carrier.suggestedFileName)
 
             Image(uiImage: image)
                 .resizable()
@@ -511,31 +661,50 @@ struct VerificationPanel: View {
                 Button {
                     Task { await model.startWalletFlow() }
                 } label: {
-                    Label("Open wallet", systemImage: "wallet.pass")
+                    Label("Commit to it", systemImage: "wallet.pass")
                 }
                 .buttonStyle(IIRYPrimaryButtonStyle())
                 .disabled(model.isBusy)
 
-                Button {
-                    model.shareCarrier()
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(IIRYIconButtonStyle())
-                .accessibilityLabel("Share IIRY proof")
+                if hasProof {
+                    Button {
+                        model.shareCarrier()
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(IIRYIconButtonStyle())
+                    .accessibilityLabel("Share IIRY proof")
 
-                Button {
-                    model.saveReceiptToPhotos()
-                } label: {
-                    Image(systemName: "square.and.arrow.down")
-                        .frame(width: 44, height: 44)
+                    Button {
+                        model.saveReceiptToPhotos()
+                    } label: {
+                        Image(systemName: "square.and.arrow.down")
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(IIRYIconButtonStyle())
+                    .accessibilityLabel("Save receipt")
                 }
-                .buttonStyle(IIRYIconButtonStyle())
-                .accessibilityLabel("Save receipt")
             }
         }
         .modifier(IIRYPanelStyle())
+    }
+}
+
+extension URLError {
+    var isCertificateOrTLSError: Bool {
+        switch code {
+        case .secureConnectionFailed,
+             .serverCertificateHasBadDate,
+             .serverCertificateUntrusted,
+             .serverCertificateHasUnknownRoot,
+             .serverCertificateNotYetValid,
+             .clientCertificateRejected,
+             .clientCertificateRequired:
+            return true
+        default:
+            return false
+        }
     }
 }
 

@@ -2,7 +2,7 @@
 
 IIRY seeks to help confirm **Is It Really You?**
 
-The hackathon MVP creates an EUDI Wallet-backed Content Credential for a challenged JPEG image. In the WhatsApp story, that image is usually a conversation capture, but the defensible claim is **attested image provenance**, not chat forensics:
+The hackathon MVP creates an EUDI Wallet-backed C2PA JPEG manifest for a challenged image. In the WhatsApp story, that image is usually a conversation capture, but the defensible claim is **attested image provenance**, not chat forensics:
 
 > This exact image is cryptographically bound to a fresh German EUDI Wallet holder presentation for the disclosed identity attributes, and the binding verified.
 
@@ -12,7 +12,7 @@ IIRY does **not** prove that a WhatsApp account belongs to the wallet holder, th
 
 - `ios/IIRY.swiftpm`: SwiftUI iPhone app and the shared `IIRYCore` code.
 - `cli/Sources/IIRYCLI`: macOS CLI that uses the same `IIRYCore` package as the iPhone app.
-- `service/iiry_service`: FastAPI relying-party service for OpenID4VP / German EUDI Wallet callbacks and the C2PA signer bridge.
+- `service/iiry_service`: FastAPI relying-party service for OpenID4VP / German EUDI Wallet callbacks.
 - `docs/cawg-eudi-extension.md`: lean CAWG extension proposal for OpenID4VP holder-bound EUDI presentations.
 
 ## Core Idea
@@ -76,16 +76,20 @@ IIRY-Commitment-YYYY-MM-DD-ABCD1234.jpg.c2pa.cawg.iiry
 
 ## C2PA Status
 
-The shared Swift core builds the IIRY proof bundle, nonce payload, and C2PA manifest JSON. The iPhone app and CLI use that same implementation.
+The shared Swift core now implements a constrained **IIRY JPEG/C2PA profile**. It writes and reads JPEG APP11 C2PA/JUMBF segments, creates a `c2pa.hash.data` hard-binding assertion with exclusion ranges, stores the IIRY proof-bundle assertion, writes a CBOR `c2pa.claim.v2`, and signs that claim as a detached COSE_Sign1 ES256 C2PA claim signature. The iPhone app and CLI use this same implementation.
 
-The CLI integrates with local `c2patool` for two C2PA paths:
+For hackathon development the Swift core uses the same sample ES256 certificate/key material bundled with `c2patool` / `c2pa-rs`. That lets local reference tooling validate the C2PA mechanics, but it does **not** establish production signing-credential trust and must not be presented as a trusted Content Credential signer.
 
-- `iiry c2pa-embed <proof.iiry> --out <image.jpg>` embeds the shared manifest into a JPEG and signs it with `c2patool`.
-- `iiry verify <proof.iiry|c2pa-image.jpg>` runs the app-style IIRY verifier; for C2PA JPEGs it also runs `c2patool -d` and checks the C2PA claim signature, signing-credential trust, and `c2pa.hash.data` hard binding.
+The CLI supports two verification modes for C2PA-bearing JPEGs:
 
-The iPhone app does not hand-roll JPEG/JUMBF or C2PA claim signing. After the Wallet callback, it sends the shared manifest JSON and JPEG bytes to the service's signer bridge, which runs `c2patool`, returns the C2PA-augmented JPEG, and exposes detailed inspection for receiver-side verification. A deployment must configure a real trusted C2PA signing credential; the default `c2patool` development certificate is not sufficient for a credible demo claim.
+- `iiry verify <image.jpg> --own` verifies the Swift IIRY profile.
+- `iiry verify <image.jpg> --c2patool` asks local `c2patool -d` whether the asset satisfies the reference C2PA verifier.
+- `iiry verify <image.jpg> --both` runs both and exposes disagreement.
+- `iiry verify <image.jpg> --c2patool --trust-c2pa-sample` repeats the reference check while explicitly trusting the C2PA ES256 sample root anchor for local development only.
 
-The high-level `c2patool` manifest API still cannot safely precompute and insert the final CAWG `referenced_assertions` hashed URI for `c2pa.hash.data`; that value is produced during signing and can change between signing runs. A production implementation needs a lower-level C2PA signer integration that finalizes the IIRY/CAWG identity assertion with the exact hard-binding reference before claim signing. This prototype keeps that boundary explicit rather than fabricating a C2PA-looking claim.
+For IIRY-generated JPEGs, the expected default `c2patool` development result is that `assertion.dataHash.match`, `assertion.hashedURI.match`, and `claimSignature.validated` pass, while `signingCredential.untrusted` fails. With `--trust-c2pa-sample`, the C2PA layer should report `validation_state: Trusted`; this is still sample trust, not production trust. Separately, generic C2PA tooling will not understand IIRY's proposed CAWG/OpenID4VP proof-bundle semantics until that extension is standardized or explicitly supported.
+
+The web service does not execute `c2patool` and does not receive JPEG bytes for C2PA processing. It only drives the OpenID4VP relying-party flow and returns the Wallet response material to the app.
 
 ## Web Service Serialization
 
@@ -115,7 +119,7 @@ pip install -r service/requirements.txt
 uvicorn iiry_service.app:app --app-dir service --reload --port 8110
 ```
 
-The service expects RP key and German EUDI sandbox certificate material through environment variables or `service/secrets/`, matching the structure described in `service/iiry_service/app.py`. Set `C2PATOOL_PATH` if `c2patool` is not on the service host's path.
+The service expects RP key and German EUDI sandbox certificate material through environment variables or `service/secrets/`, matching the structure described in `service/iiry_service/app.py`.
 
 ## References
 

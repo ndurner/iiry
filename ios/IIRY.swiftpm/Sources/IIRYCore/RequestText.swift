@@ -3,7 +3,7 @@ import Foundation
 public enum IIRYRequestText {
     public static func make(date: Date = Date(), nonceCode: String? = nil) throws -> String {
         let code = try nonceCode ?? IIRYFileNames.shortCode(data: IIRYNonce.secureRandom(count: 8))
-        return "Is it really you?\n(\(IIRYDateFormatting.shortDateString(from: date)) \(code))"
+        return "Is it really you?\n(\(IIRYDateFormatting.shortRequestDateString(from: date)) \(code))"
     }
 }
 
@@ -37,6 +37,14 @@ public enum IIRYDateFormatting {
             components.month ?? 0,
             components.day ?? 0
         )
+    }
+
+    public static func shortRequestDateString(from date: Date) -> String {
+        let full = shortDateString(from: date)
+        if full.hasPrefix("20") {
+            return String(full.dropFirst(2))
+        }
+        return full
     }
 
     public static func iso8601String(from date: Date) -> String {

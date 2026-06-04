@@ -2,9 +2,41 @@ import Foundation
 
 public enum CBORValue: Equatable {
     case unsigned(UInt64)
+    case negative(Int64)
     case bytes(Data)
     case string(String)
     case array([CBORValue])
+    case map([(CBORValue, CBORValue)])
+    indirect case tagged(UInt64, CBORValue)
+    case null
+
+    public static func == (lhs: CBORValue, rhs: CBORValue) -> Bool {
+        switch (lhs, rhs) {
+        case (.unsigned(let left), .unsigned(let right)):
+            return left == right
+        case (.negative(let left), .negative(let right)):
+            return left == right
+        case (.bytes(let left), .bytes(let right)):
+            return left == right
+        case (.string(let left), .string(let right)):
+            return left == right
+        case (.array(let left), .array(let right)):
+            return left == right
+        case (.map(let left), .map(let right)):
+            guard left.count == right.count else {
+                return false
+            }
+            return zip(left, right).allSatisfy { lhsPair, rhsPair in
+                lhsPair.0 == rhsPair.0 && lhsPair.1 == rhsPair.1
+            }
+        case (.tagged(let leftTag, let leftValue), .tagged(let rightTag, let rightValue)):
+            return leftTag == rightTag && leftValue == rightValue
+        case (.null, .null):
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 public enum DeterministicCBOR {
@@ -12,6 +44,11 @@ public enum DeterministicCBOR {
         switch value {
         case .unsigned(let integer):
             return encodeHeader(majorType: 0, value: integer)
+        case .negative(let integer):
+            guard integer < 0 else {
+                throw IIRYError.invalidCBOR("Negative CBOR value must be below zero")
+            }
+            return encodeHeader(majorType: 1, value: UInt64(-1 - integer))
         case .bytes(let data):
             return encodeHeader(majorType: 2, value: UInt64(data.count)) + data
         case .string(let string):
@@ -23,6 +60,22 @@ public enum DeterministicCBOR {
                 out.append(try encode(item))
             }
             return out
+        case .map(let pairs):
+            let encodedPairs = try pairs.map { key, value in
+                (key: try encode(key), value: try encode(value))
+            }.sorted { lhs, rhs in
+                lhs.key.lexicographicallyPrecedes(rhs.key)
+            }
+            var out = encodeHeader(majorType: 5, value: UInt64(encodedPairs.count))
+            for pair in encodedPairs {
+                out.append(pair.key)
+                out.append(pair.value)
+            }
+            return out
+        case .tagged(let tag, let value):
+            return encodeHeader(majorType: 6, value: tag) + (try encode(value))
+        case .null:
+            return Data([0xf6])
         }
     }
 
@@ -81,6 +134,11 @@ private struct CBORReader {
         switch majorType {
         case 0:
             return .unsigned(value)
+        case 1:
+            guard value <= UInt64(Int64.max) else {
+                throw IIRYError.invalidCBOR("Negative integer is too large")
+            }
+            return .negative(-1 - Int64(value))
         case 2:
             return .bytes(try readData(count: Int(value)))
         case 3:
@@ -96,6 +154,22 @@ private struct CBORReader {
                 values.append(try read())
             }
             return .array(values)
+        case 5:
+            var pairs: [(CBORValue, CBORValue)] = []
+            pairs.reserveCapacity(Int(value))
+            for _ in 0..<value {
+                let key = try read()
+                let entry = try read()
+                pairs.append((key, entry))
+            }
+            return .map(pairs)
+        case 6:
+            return .tagged(value, try read())
+        case 7:
+            guard additional == 22 else {
+                throw IIRYError.invalidCBOR("Unsupported CBOR simple value \(additional)")
+            }
+            return .null
         default:
             throw IIRYError.invalidCBOR("Unsupported major type \(majorType)")
         }

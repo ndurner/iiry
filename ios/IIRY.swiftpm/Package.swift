@@ -19,7 +19,7 @@ let package = Package(
             teamIdentifier: "FSYXWNUDDW",
             displayVersion: "1.0",
             bundleVersion: "1",
-            appIcon: .placeholder(icon: .object),
+            appIcon: .placeholder(icon: .barChart),
             accentColor: .presetColor(.teal),
             supportedDeviceFamilies: [
                 .phone,
