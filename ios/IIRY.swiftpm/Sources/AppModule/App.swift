@@ -7,12 +7,21 @@ import UIKit
 @main
 struct IIRYApp: App {
     @State private var model = IIRYAppModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             IIRYRootView(model: model)
+                .task {
+                    await model.importSharedImageFromSharedContainerIfPresent()
+                }
                 .onOpenURL { url in
                     Task { await model.handle(url: url) }
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active {
+                        Task { await model.importSharedImageFromSharedContainerIfPresent() }
+                    }
                 }
         }
     }
@@ -27,6 +36,9 @@ extension UTType {
 final class IIRYAppModel {
     static let defaultServiceBaseURL = "https://iiry.ndurner.de"
     private static let serviceBaseURLKey = "iiry.serviceBaseURL"
+    private static let appGroupIdentifier = "group.de.ndurner.iiry"
+    private static let handoffImageName = "shared-image.bin"
+    private static let handoffMetadataName = "shared-image.json"
 
     var serviceBaseURL: String
     var requestText: String
@@ -191,6 +203,81 @@ final class IIRYAppModel {
         await fetchWalletResponse(state: state, token: token)
     }
 
+    func importSharedImageFromSharedContainerIfPresent() async {
+        if await importSharedImageFromSharedContainer(showMissingError: false) {
+            return
+        }
+        await importSharedImageFromGeneralPasteboardIfPresent()
+    }
+
+    func importStagedSharedImage() async {
+        if await importSharedImageFromSharedContainer(showMissingError: true) {
+            return
+        }
+        await importSharedImageFromGeneralPasteboardIfPresent(showMissingError: true)
+    }
+
+    private func importSharedImageFromGeneralPasteboardIfPresent(showMissingError: Bool = false) async {
+        if let stagedImage = UIPasteboard.general.data(forPasteboardType: "de.ndurner.iiry.share-image"),
+           !stagedImage.isEmpty {
+            isBusy = true
+            errorMessage = nil
+            defer { isBusy = false }
+            do {
+                try prepareImage(stagedImage)
+                clearGeneralShareHandoff()
+                statusMessage = "Shared image imported"
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            return
+        }
+
+        guard let data = UIPasteboard.general.data(forPasteboardType: "de.ndurner.iiry.share-url"),
+              let rawURL = String(data: data, encoding: .utf8),
+              let url = URL(string: rawURL),
+              url.scheme == "iiry",
+              url.host == "share-image" else {
+            if showMissingError {
+                errorMessage = "No staged IIRY image was found. Share the screenshot to IIRY again."
+            }
+            return
+        }
+        await importSharedImage(url)
+    }
+
+    private func importSharedImageFromSharedContainer(showMissingError: Bool) async -> Bool {
+        guard let directory = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.appGroupIdentifier) else {
+            if showMissingError {
+                errorMessage = "IIRY shared storage is unavailable. Reinstall the app with the app-group entitlement."
+            }
+            return false
+        }
+
+        let imageURL = directory.appendingPathComponent(Self.handoffImageName)
+        guard FileManager.default.fileExists(atPath: imageURL.path) else {
+            if showMissingError {
+                errorMessage = "No staged IIRY image was found. Share the screenshot to IIRY again."
+            }
+            return false
+        }
+
+        isBusy = true
+        errorMessage = nil
+        defer { isBusy = false }
+
+        do {
+            let data = try Data(contentsOf: imageURL)
+            try prepareImage(data)
+            clearSharedImageHandoff(in: directory)
+            statusMessage = "Shared image imported"
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     func fetchWalletResponse(state: String, token: String) async {
         guard let carrier else {
             errorMessage = "No local proof is waiting for this wallet response."
@@ -269,7 +356,12 @@ final class IIRYAppModel {
             }
             let type = components?.queryItems?.first(where: { $0.name == "type" })?.value ?? UTType.data.identifier
             guard let pasteboard = UIPasteboard(name: UIPasteboard.Name(rawValue: pasteboardName), create: false) else {
-                throw IIRYError.invalidCarrier("Shared image handoff expired")
+                guard let data = UIPasteboard.general.data(forPasteboardType: "de.ndurner.iiry.share-image"), !data.isEmpty else {
+                    throw IIRYError.invalidCarrier("Shared image handoff expired")
+                }
+                try prepareImage(data)
+                clearGeneralShareHandoff()
+                return
             }
             guard let data = pasteboard.data(forPasteboardType: type)
                 ?? pasteboard.data(forPasteboardType: UTType.jpeg.identifier)
@@ -279,6 +371,7 @@ final class IIRYAppModel {
             }
             try prepareImage(data)
             pasteboard.items = []
+            clearGeneralShareHandoff()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -384,6 +477,19 @@ final class IIRYAppModel {
             throw IIRYError.commandFailed("Enter the service origin only, without /api paths.")
         }
         return trimmed
+    }
+
+    private func clearGeneralShareHandoff() {
+        UIPasteboard.general.setData(Data(), forPasteboardType: "de.ndurner.iiry.share-url")
+        UIPasteboard.general.setData(Data(), forPasteboardType: "de.ndurner.iiry.share-image")
+        UIPasteboard.general.setData(Data(), forPasteboardType: "de.ndurner.iiry.share-image-type")
+    }
+
+    private func clearSharedImageHandoff(in directory: URL) {
+        for fileName in [Self.handoffImageName, Self.handoffMetadataName] {
+            let url = directory.appendingPathComponent(fileName)
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     private func writeTempData(_ data: Data, fileName: String) throws -> URL {
@@ -618,6 +724,14 @@ struct IntakePanel: View {
                     photoItem = nil
                 }
             }
+
+            Button {
+                Task { await model.importStagedSharedImage() }
+            } label: {
+                Label("Continue shared image", systemImage: "arrow.down.doc")
+            }
+            .buttonStyle(IIRYSecondaryButtonStyle())
+            .disabled(model.isBusy)
 
             Button {
                 model.showsImporter = true
