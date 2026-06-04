@@ -69,10 +69,14 @@ import Testing
 
     #expect(carrier.proof.openID4VP.state == "test-state")
     #expect(carrier.proof.disclosedClaims["given_name"] == "ERIKA")
+    #expect(carrier.proof.disclosedClaims["family_name"] == "MUSTERMANN")
+    #expect(carrier.proof.committedPersonName == "ERIKA MUSTERMANN")
 
     let report = try IIRYVerifier.verifyCarrier(carrier)
     #expect(report.checks.first { $0.id == "presentation_nonce" }?.passed == true)
     #expect(report.checks.first { $0.id == "wallet_service_verification" }?.passed == true)
+    #expect(report.checks.first { $0.id == "pid_name_disclosed" }?.passed == true)
+    #expect(report.checks.first { $0.id == "pid_name_disclosed" }?.detail == "ERIKA MUSTERMANN")
     #expect(report.overallPassed == true)
 }
 
@@ -148,9 +152,10 @@ private func preparedCarrierWithPresentation(image: Data) throws -> IIRYCarrier 
 
 private func fakePresentation(nonce: String) -> String {
     let issuerJWT = fakeJWT(payload: ["iss": "issuer"])
-    let disclosure = Base64URL.encode(try! JSONCoding.objectData(["salt", "given_name", "ERIKA"]))
+    let givenNameDisclosure = Base64URL.encode(try! JSONCoding.objectData(["salt", "given_name", "ERIKA"]))
+    let familyNameDisclosure = Base64URL.encode(try! JSONCoding.objectData(["salt", "family_name", "MUSTERMANN"]))
     let keyBinding = fakeJWT(payload: ["nonce": nonce, "aud": "verifier"])
-    return [issuerJWT, disclosure, keyBinding].joined(separator: "~")
+    return [issuerJWT, givenNameDisclosure, familyNameDisclosure, keyBinding].joined(separator: "~")
 }
 
 private func fakeJWT(payload: [String: Any]) -> String {

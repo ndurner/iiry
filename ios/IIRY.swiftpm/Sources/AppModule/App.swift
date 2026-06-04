@@ -619,6 +619,10 @@ struct ActiveProofView: View {
                             .minimumScaleFactor(0.82)
                     }
 
+                    if hasProof {
+                        IdentityBanner(name: carrier.proof.committedPersonNameDisclosureComplete ? carrier.proof.committedPersonName : nil)
+                    }
+
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFit()
@@ -682,7 +686,7 @@ struct ActiveProofView: View {
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
         }
         .fullScreenCover(isPresented: $showsImageInspector) {
-            ImageInspectorView(image: image, title: model.commitmentDisplayMode == .receivedVerification ? "Verified image" : "Committed image")
+            ImageInspectorView(image: image, title: "Committed image")
         }
     }
 
@@ -698,6 +702,35 @@ struct ActiveProofView: View {
         case .draft:
             return "Wallet-backed commitment is attached."
         }
+    }
+}
+
+struct IdentityBanner: View {
+    let name: String?
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: name == nil ? "person.crop.circle.badge.exclamationmark" : "person.crop.circle.badge.checkmark")
+                .foregroundStyle(name == nil ? IIRYPalette.rust : IIRYPalette.green)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name == nil ? "Wallet holder name not disclosed" : "Committed by")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(IIRYPalette.ink.opacity(0.58))
+                    .textCase(.uppercase)
+                Text(name ?? "No given_name/family_name in the presentation")
+                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .foregroundStyle(IIRYPalette.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.66), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(IIRYPalette.line, lineWidth: 1))
     }
 }
 
@@ -816,56 +849,106 @@ struct ImageInspectorView: View {
     let image: UIImage
     let title: String
     @Environment(\.dismiss) private var dismiss
+    @State private var showsChrome = true
+    @State private var chromeHideTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
             Color(red: 0.03, green: 0.05, blue: 0.08)
                 .ignoresSafeArea()
 
-            ZoomableImageView(image: image)
+            ZoomableImageView(
+                image: image,
+                onSingleTap: {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        showsChrome.toggle()
+                    }
+                    if showsChrome {
+                        scheduleChromeHide()
+                    } else {
+                        chromeHideTask?.cancel()
+                    }
+                },
+                onDoubleTap: {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        showsChrome = false
+                    }
+                    chromeHideTask?.cancel()
+                }
+            )
                 .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("IIRY")
-                            .font(.system(size: 15, weight: .black, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.72))
+            if showsChrome {
+                VStack(spacing: 0) {
+                    HStack(alignment: .center, spacing: 12) {
                         Text(title)
-                            .font(.system(size: 22, weight: .black, design: .rounded))
+                            .font(.system(size: 21, weight: .black, design: .rounded))
                             .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.78)
+
+                        Spacer(minLength: 8)
+
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 15, weight: .black))
+                                .foregroundStyle(.white)
+                                .frame(width: 40, height: 40)
+                                .background(Color.black.opacity(0.44), in: Circle())
+                                .overlay(Circle().stroke(.white.opacity(0.24), lineWidth: 1))
+                        }
+                        .accessibilityLabel("Close image inspector")
                     }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
+                    .background(
+                        LinearGradient(
+                            colors: [.black.opacity(0.58), .black.opacity(0.18)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
 
-                    Spacer(minLength: 8)
+                    Spacer()
 
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .black))
-                            .foregroundStyle(IIRYPalette.ink)
-                            .frame(width: 44, height: 44)
-                            .background(.white.opacity(0.92), in: Circle())
+                    HStack(spacing: 8) {
+                        Image(systemName: "hand.draw")
+                        Text("Pinch to zoom. Double-tap to inspect. Tap once to hide controls.")
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                     }
-                    .accessibilityLabel("Close image inspector")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(Color.black.opacity(0.58), in: Capsule())
+                    .overlay(Capsule().stroke(.white.opacity(0.16), lineWidth: 1))
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 14)
-                .padding(.bottom, 12)
-                .background(.ultraThinMaterial.opacity(0.82))
+                .transition(.opacity)
+            }
+        }
+        .task {
+            scheduleChromeHide()
+        }
+        .onDisappear {
+            chromeHideTask?.cancel()
+        }
+    }
 
-                Spacer()
-
-                HStack(spacing: 8) {
-                    Image(systemName: "hand.draw")
-                    Text("Pinch to zoom. Double-tap to inspect.")
-                }
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.82))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(IIRYPalette.ink.opacity(0.78), in: Capsule())
-                .padding(.bottom, 18)
+    private func scheduleChromeHide() {
+        chromeHideTask?.cancel()
+        chromeHideTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2.4))
+            guard !Task.isCancelled else {
+                return
+            }
+            withAnimation(.easeInOut(duration: 0.22)) {
+                showsChrome = false
             }
         }
     }
@@ -873,9 +956,11 @@ struct ImageInspectorView: View {
 
 struct ZoomableImageView: UIViewRepresentable {
     let image: UIImage
+    let onSingleTap: () -> Void
+    let onDoubleTap: () -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator()
+        Coordinator(onSingleTap: onSingleTap, onDoubleTap: onDoubleTap)
     }
 
     func makeUIView(context: Context) -> UIScrollView {
@@ -909,6 +994,11 @@ struct ZoomableImageView: UIViewRepresentable {
         doubleTap.numberOfTapsRequired = 2
         scrollView.addGestureRecognizer(doubleTap)
 
+        let singleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleSingleTap(_:)))
+        singleTap.numberOfTapsRequired = 1
+        singleTap.require(toFail: doubleTap)
+        scrollView.addGestureRecognizer(singleTap)
+
         context.coordinator.imageView = imageView
         context.coordinator.scrollView = scrollView
         return scrollView
@@ -916,14 +1006,28 @@ struct ZoomableImageView: UIViewRepresentable {
 
     func updateUIView(_ scrollView: UIScrollView, context: Context) {
         context.coordinator.imageView?.image = image
+        context.coordinator.onSingleTap = onSingleTap
+        context.coordinator.onDoubleTap = onDoubleTap
     }
 
     final class Coordinator: NSObject, UIScrollViewDelegate {
         weak var imageView: UIImageView?
         weak var scrollView: UIScrollView?
+        var onSingleTap: () -> Void
+        var onDoubleTap: () -> Void
+
+        init(onSingleTap: @escaping () -> Void, onDoubleTap: @escaping () -> Void) {
+            self.onSingleTap = onSingleTap
+            self.onDoubleTap = onDoubleTap
+        }
 
         func viewForZooming(in scrollView: UIScrollView) -> UIView? {
             imageView
+        }
+
+        @objc
+        func handleSingleTap(_ recognizer: UITapGestureRecognizer) {
+            onSingleTap()
         }
 
         @objc
@@ -931,6 +1035,7 @@ struct ZoomableImageView: UIViewRepresentable {
             guard let scrollView else {
                 return
             }
+            onDoubleTap()
             if scrollView.zoomScale > scrollView.minimumZoomScale + 0.1 {
                 scrollView.setZoomScale(scrollView.minimumZoomScale, animated: true)
             } else {

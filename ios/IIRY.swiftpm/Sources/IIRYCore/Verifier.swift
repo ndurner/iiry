@@ -135,6 +135,13 @@ public enum IIRYVerifier {
             ))
         }
 
+        checks.append(.init(
+            id: "pid_name_disclosed",
+            label: "Wallet disclosed committed person's name",
+            passed: proof.committedPersonNameDisclosureComplete,
+            detail: proof.committedPersonName ?? "Missing given_name/family_name disclosures"
+        ))
+
         return checks
     }
 }

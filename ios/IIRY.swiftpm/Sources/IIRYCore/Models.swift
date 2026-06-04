@@ -219,3 +219,26 @@ public struct IIRYVerificationReport: Codable, Equatable {
         self.overallPassed = checks.allSatisfy(\.passed)
     }
 }
+
+public extension IIRYProofBundle {
+    var committedPersonNameDisclosureComplete: Bool {
+        let givenName = disclosedClaims["given_name"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let familyName = disclosedClaims["family_name"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return givenName?.isEmpty == false && familyName?.isEmpty == false
+    }
+
+    var committedPersonName: String? {
+        let givenName = disclosedClaims["given_name"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let familyName = disclosedClaims["family_name"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = [givenName, familyName].compactMap { value -> String? in
+            guard let value, !value.isEmpty else {
+                return nil
+            }
+            return value
+        }
+        guard !parts.isEmpty else {
+            return nil
+        }
+        return parts.joined(separator: " ")
+    }
+}
