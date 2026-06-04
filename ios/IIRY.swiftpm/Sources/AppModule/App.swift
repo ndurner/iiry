@@ -52,6 +52,7 @@ final class IIRYAppModel {
     var showsImporter = false
     var showsSettings = false
     var shareItem: IIRYShareItem?
+    var imagePreparationSource: ImagePreparationSource?
 
     init() {
         self.serviceBaseURL = UserDefaults.standard.string(forKey: Self.serviceBaseURLKey) ?? Self.defaultServiceBaseURL
@@ -91,7 +92,7 @@ final class IIRYAppModel {
                     try importC2PAJPEG(data, fileName: url.lastPathComponent)
                 }
             } else {
-                try prepareImage(data)
+                try prepareImage(data, source: .file)
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -110,7 +111,7 @@ final class IIRYAppModel {
             guard let data = try await item.loadTransferable(type: Data.self) else {
                 throw IIRYError.invalidCarrier("Selected photo did not provide image data")
             }
-            try prepareImage(data)
+            try prepareImage(data, source: .photos)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -224,9 +225,9 @@ final class IIRYAppModel {
             errorMessage = nil
             defer { isBusy = false }
             do {
-                try prepareImage(stagedImage)
+                try prepareImage(stagedImage, source: .shared)
                 clearGeneralShareHandoff()
-                statusMessage = "Shared image imported"
+                statusMessage = "Ready to commit"
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -268,9 +269,9 @@ final class IIRYAppModel {
 
         do {
             let data = try Data(contentsOf: imageURL)
-            try prepareImage(data)
+            try prepareImage(data, source: .shared)
             clearSharedImageHandoff(in: directory)
-            statusMessage = "Shared image imported"
+            statusMessage = "Ready to commit"
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -359,7 +360,7 @@ final class IIRYAppModel {
                 guard let data = UIPasteboard.general.data(forPasteboardType: "de.ndurner.iiry.share-image"), !data.isEmpty else {
                     throw IIRYError.invalidCarrier("Shared image handoff expired")
                 }
-                try prepareImage(data)
+                try prepareImage(data, source: .shared)
                 clearGeneralShareHandoff()
                 return
             }
@@ -369,7 +370,7 @@ final class IIRYAppModel {
                 ?? pasteboard.data(forPasteboardType: UTType.data.identifier) else {
                 throw IIRYError.invalidCarrier("Shared image handoff did not contain image data")
             }
-            try prepareImage(data)
+            try prepareImage(data, source: .shared)
             pasteboard.items = []
             clearGeneralShareHandoff()
         } catch {
@@ -390,17 +391,19 @@ final class IIRYAppModel {
         selectedImage = UIImage(data: visualData)
         verificationReport = report
         pendingSession = nil
+        imagePreparationSource = .file
         statusMessage = "C2PA proof opened"
     }
 
-    private func prepareImage(_ data: Data) throws {
+    private func prepareImage(_ data: Data, source: ImagePreparationSource) throws {
         let jpegData = try normalizedJPEGData(from: data)
         let prepared = try IIRYProofBuilder.prepare(imageData: jpegData)
         carrier = prepared.carrier
         selectedImage = UIImage(data: jpegData)
         verificationReport = nil
         pendingSession = nil
-        statusMessage = isJPEG(data) ? "Image commitment prepared" : "Image converted to JPEG and prepared"
+        imagePreparationSource = source
+        statusMessage = source == .shared ? "Ready to commit" : (isJPEG(data) ? "Image commitment prepared" : "Image converted to JPEG and prepared")
     }
 
     private func normalizedJPEGData(from data: Data) throws -> Data {
@@ -518,6 +521,12 @@ struct WalletResponsePayload {
     let verification: WalletVerificationSummary?
 }
 
+enum ImagePreparationSource {
+    case shared
+    case photos
+    case file
+}
+
 struct IIRYShareItem: Identifiable {
     let id = UUID()
     let activityItems: [Any]
@@ -529,19 +538,19 @@ struct IIRYRootView: View {
     var body: some View {
         ZStack {
             IIRYBackdrop()
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 18) {
-                    HeroPanel(model: model)
-                    if let carrier = model.carrier, let image = model.selectedImage {
-                        VerificationPanel(model: model, carrier: carrier, image: image)
-                    } else {
+            if let carrier = model.carrier, let image = model.selectedImage {
+                ActiveProofView(model: model, carrier: carrier, image: image)
+            } else {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        HeroPanel(model: model)
                         IntakePanel(model: model)
+                        StatusPanel(model: model)
                     }
-                    StatusPanel(model: model)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 18)
+                    .padding(.bottom, 34)
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 18)
-                .padding(.bottom, 34)
             }
         }
         .fileImporter(
@@ -566,6 +575,168 @@ struct IIRYRootView: View {
             )
             .presentationDetents([.medium])
         }
+    }
+}
+
+struct ActiveProofView: View {
+    @Bindable var model: IIRYAppModel
+    let carrier: IIRYCarrier
+    let image: UIImage
+
+    var body: some View {
+        GeometryReader { geometry in
+            let hasProof = model.verificationReport != nil
+
+            VStack(alignment: .leading, spacing: 12) {
+                CompactHeader(
+                    title: hasProof ? "Verification" : "Commitment",
+                    detail: hasProof ? "Wallet proof attached" : "Review, then commit"
+                ) {
+                    model.showsSettings = true
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .center, spacing: 10) {
+                        Image(systemName: hasProof ? "checkmark.seal.fill" : "scope")
+                            .foregroundStyle(hasProof ? IIRYPalette.green : IIRYPalette.plum)
+                            .frame(width: 24)
+                        Text(hasProof ? "Wallet-backed signal is attached." : "Confirm the challenge is visible in the image.")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundStyle(IIRYPalette.ink)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.82)
+                    }
+
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity)
+                        .frame(maxHeight: hasProof ? geometry.size.height * 0.44 : geometry.size.height * 0.58)
+                        .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(IIRYPalette.line, lineWidth: 1))
+
+                    if let report = model.verificationReport {
+                        ScrollView(showsIndicators: false) {
+                            VStack(spacing: 8) {
+                                ForEach(report.checks) { check in
+                                    CheckRow(check: check)
+                                }
+                            }
+                        }
+                        .frame(maxHeight: geometry.size.height * 0.22)
+                    }
+
+                    ActionRow(model: model, hasProof: hasProof)
+                }
+                .modifier(IIRYPanelStyle())
+
+                CompactStatusPanel(model: model)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
+            .padding(.bottom, 18)
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+        }
+    }
+}
+
+struct CompactHeader: View {
+    let title: String
+    let detail: String
+    let onSettings: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("IIRY")
+                    .font(.system(size: 22, weight: .black, design: .rounded))
+                    .foregroundStyle(IIRYPalette.ink)
+                HStack(spacing: 8) {
+                    Text(title)
+                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .foregroundStyle(IIRYPalette.ink)
+                    Text(detail)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(IIRYPalette.plum)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 8)
+            Button {
+                onSettings()
+            } label: {
+                Image(systemName: "gearshape")
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(IIRYIconButtonStyle())
+            .accessibilityLabel("Settings")
+        }
+    }
+}
+
+struct ActionRow: View {
+    @Bindable var model: IIRYAppModel
+    let hasProof: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if hasProof {
+                Button {
+                    model.shareCarrier()
+                } label: {
+                    Label("Share proof", systemImage: "square.and.arrow.up")
+                }
+                .buttonStyle(IIRYPrimaryButtonStyle())
+
+                Button {
+                    model.saveReceiptToPhotos()
+                } label: {
+                    Image(systemName: "square.and.arrow.down")
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(IIRYIconButtonStyle())
+                .accessibilityLabel("Save receipt")
+            } else {
+                Button {
+                    Task { await model.startWalletFlow() }
+                } label: {
+                    Label("Commit to it", systemImage: "wallet.pass")
+                }
+                .buttonStyle(IIRYPrimaryButtonStyle())
+                .disabled(model.isBusy)
+            }
+        }
+    }
+}
+
+struct CompactStatusPanel: View {
+    @Bindable var model: IIRYAppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            if model.isBusy {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("Working")
+                }
+                .foregroundStyle(IIRYPalette.ink.opacity(0.72))
+            }
+            if let status = model.statusMessage {
+                Label(status, systemImage: "checkmark.seal")
+                    .foregroundStyle(IIRYPalette.green)
+            }
+            if let error = model.errorMessage {
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(IIRYPalette.rust)
+            }
+        }
+        .font(.system(size: 14, weight: .semibold, design: .rounded))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color.white.opacity(0.68), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(IIRYPalette.line, lineWidth: 1))
     }
 }
 
