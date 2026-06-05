@@ -1054,9 +1054,15 @@ struct HeroPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            IIRYHeroImage()
-                .frame(height: 156)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+            ZStack(alignment: .topTrailing) {
+                IIRYHeroImage()
+                    .frame(height: 156)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                ExperimentalBadge()
+                    .padding(.trailing, 14)
+                    .padding(.top, 14)
+            }
 
             VStack(alignment: .leading, spacing: 7) {
                 Text("IIRY")
@@ -1114,6 +1120,18 @@ struct IIRYHeroImage: View {
             .resizable()
             .scaledToFill()
             .accessibilityLabel("IIRY assistant checking a message challenge")
+    }
+}
+
+struct ExperimentalBadge: View {
+    var body: some View {
+        Text("Experimental")
+            .font(.system(size: 8, weight: .bold, design: .rounded))
+            .foregroundStyle(IIRYPalette.rust)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .overlay(Capsule().stroke(IIRYPalette.rust.opacity(0.82), lineWidth: 1))
+            .accessibilityLabel("Experimental hackathon project")
     }
 }
 
