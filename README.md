@@ -2,11 +2,12 @@
 
 IIRY seeks to help confirm **Is It Really You?**
 
-The hackathon MVP creates an EUDI Wallet-backed C2PA JPEG manifest for a challenged image. In the WhatsApp story, that image is usually a conversation capture, but the defensible claim is **attested image provenance**, not chat forensics:
+This hackathon MVP binds a German EUDI Wallet Verifiable Presentation to a JPEG. This can be useful, for example, to commit to a screenshot of a WhatsApp conversation. In the case of a request for something, this would give the receiver another signal whether or not the request is genuine. 
 
+While this may sound a lot like chat forensics, the security claim actually is **attested image provenance**:
 > This exact image is cryptographically bound to a fresh German EUDI Wallet holder presentation for the disclosed identity attributes, and the binding verified.
 
-IIRY does **not** prove that a WhatsApp account belongs to the wallet holder, that the conversation content is true, or that a bank-transfer request is legitimate. It proves image binding, credential presentation verification, holder-binding freshness, and verifier policy checks.
+IIRY does **not** prove that a WhatsApp account belongs to the wallet holder, that the conversation content is true, or that a bank-transfer request by itself is legitimate. It proves image binding, credential presentation verification, holder-binding freshness, and verifier policy checks.
 
 ## Parts
 
@@ -17,9 +18,9 @@ IIRY does **not** prove that a WhatsApp account belongs to the wallet holder, th
 
 ## Core Idea
 
-[Content Credentials](https://c2pa.org/) are the user-facing provenance experience built around the technical standards from the [Coalition for Content Provenance and Authenticity (C2PA)](https://spec.c2pa.org/specifications/specifications/2.3/specs/C2PA_Specification.html). The [Creator Assertions Working Group (CAWG)](https://cawg.io/identity/1.3-draft+vc-vp/) adds identity assertions that can bind a credentialed actor to C2PA assertions such as the asset hard binding.
+[Content Credentials](https://c2pa.org/) are the user-facing provenance experience built around the technical standards from the [Coalition for Content Provenance and Authenticity (C2PA)](https://spec.c2pa.org/specifications/specifications/2.3/specs/C2PA_Specification.html) for digital assets. The [Creator Assertions Working Group (CAWG)](https://cawg.io/identity/1.3-draft+vc-vp/) adds identity assertions that can bind a credentialed actor to C2PA assertions.
 
-CAWG's draft VC+VP identity assertion currently centers the `cawg.verifiable_credential_binding` signature type for W3C Verifiable Credentials / Presentations. The German EUDI Wallet flow used here returns an OpenID4VP presentation, currently expected as `dc+sd-jwt` PID evidence with a Key Binding JWT. That is not the same object shape as the CAWG draft's W3C VC/VP binding.
+CAWG's draft VC+VP identity assertion currently builds on the W3C standard for W3C Verifiable Credentials / Presentations. The German EUDI Wallet flow used here, however, returns an OpenID4VP presentation. That is not the same object shape as the CAWG draft's W3C VC/VP binding.
 
 IIRY therefore uses an extension signature type:
 
@@ -36,9 +37,7 @@ The extension keeps the CAWG idea of an identity assertion that references the C
 5. Verify the Wallet presentation holder binding over the same nonce.
 6. Verify issuer trust, disclosure integrity, audience, freshness, and policy.
 
-The OpenID4VP `nonce` is originally a verifier transaction challenge. In holder-bound presentations it helps bind the proof to this verifier and this transaction, preventing presentation injection and replay. In SD-JWT VC, the Key Binding JWT also uses `nonce`, `aud`, and `sd_hash` so the holder proof is fresh, intended for the verifier, and bound to the selected disclosures.
-
-IIRY does not treat the nonce as a magic cryptographic amplifier. It makes the nonce a domain-separated structured challenge: the Wallet signs a holder-binding proof over the OpenID4VP nonce, and that nonce contains the digest of IIRY's image-binding material.
+The OpenID4VP `nonce` is originally a verifier transaction challenge. In holder-bound presentations it helps bind the proof to this verifier and this transaction, preventing presentation injection and replay. IIRY extends this to include the image binding: the Wallet signs a holder-binding proof over the OpenID4VP nonce, and that nonce contains the digest of IIRY's image-binding material.
 
 ## Nonce Payload
 
@@ -52,8 +51,6 @@ base64url(deterministic-cbor([
   sha256(c2pa_asset_binding_material)
 ]))
 ```
-
-The random value provides the actual transaction challenge. The asset-binding digest binds the Wallet holder proof to the image commitment.
 
 The human challenge text, for example:
 
