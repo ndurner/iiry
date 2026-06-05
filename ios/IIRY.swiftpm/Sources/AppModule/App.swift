@@ -554,6 +554,7 @@ struct IIRYRootView: View {
                     VStack(alignment: .leading, spacing: 18) {
                         HeroPanel(model: model)
                         IntakePanel(model: model)
+                            .padding(.top, 18)
                         StatusPanel(model: model)
                     }
                     .padding(.horizontal, 18)
@@ -1300,7 +1301,7 @@ struct IntakePanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionTitle(title: "Prepare Image", detail: "Photos or file")
+            SectionTitle(title: "Commit to image", detail: "Photos or file")
             PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
                 Label("Choose from Photos", systemImage: "photo.badge.plus")
                     .frame(maxWidth: .infinity)
