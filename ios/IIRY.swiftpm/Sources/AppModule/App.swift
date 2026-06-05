@@ -1073,7 +1073,7 @@ struct HeroPanel: View {
                     .font(.system(size: 18, weight: .semibold, design: .rounded))
                     .foregroundStyle(IIRYPalette.plum)
 
-                Text("A wallet-backed signal for challenged images: visible request text, image binding, and verification checks.")
+                Text("Content Credentials, backed by EUDIW.\nAsk, send and verify Commitments to image content.")
                     .font(.system(size: 15, weight: .medium, design: .rounded))
                     .foregroundStyle(IIRYPalette.ink.opacity(0.70))
                     .lineSpacing(2)
