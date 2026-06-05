@@ -1065,9 +1065,22 @@ struct HeroPanel: View {
             }
 
             VStack(alignment: .leading, spacing: 7) {
-                Text("IIRY")
-                    .font(.system(size: 46, weight: .black, design: .rounded))
-                    .foregroundStyle(IIRYPalette.ink)
+                HStack(alignment: .top, spacing: 12) {
+                    Text("IIRY")
+                        .font(.system(size: 46, weight: .black, design: .rounded))
+                        .foregroundStyle(IIRYPalette.ink)
+
+                    Spacer(minLength: 8)
+
+                    Button {
+                        model.showsSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(IIRYIconButtonStyle())
+                    .accessibilityLabel("Settings")
+                }
 
                 Text("Is It Really You?")
                     .font(.system(size: 18, weight: .semibold, design: .rounded))
@@ -1085,7 +1098,7 @@ struct HeroPanel: View {
                 Button {
                     model.shareRequest()
                 } label: {
-                    Label("Share request", systemImage: "paperplane")
+                    Label("Send challenge", systemImage: "paperplane")
                 }
                 .buttonStyle(IIRYPrimaryButtonStyle())
 
@@ -1097,15 +1110,6 @@ struct HeroPanel: View {
                 }
                 .buttonStyle(IIRYIconButtonStyle())
                 .accessibilityLabel("Refresh request nonce")
-
-                Button {
-                    model.showsSettings = true
-                } label: {
-                    Image(systemName: "gearshape")
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(IIRYIconButtonStyle())
-                .accessibilityLabel("Settings")
             }
         }
         .padding(14)
