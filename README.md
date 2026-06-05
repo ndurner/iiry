@@ -88,6 +88,16 @@ For IIRY-generated JPEGs, the expected default `c2patool` development result is 
 
 The web service does not execute `c2patool` and does not receive JPEG bytes for C2PA processing. It only drives the OpenID4VP relying-party flow and returns the Wallet response material to the app.
 
+## Acknowledgements
+
+IIRY is a prototype implementation built on public standards and reference ecosystems:
+
+- The C2PA/JUMBF/JPEG manifest work is implemented in Swift for this repository, guided by the Coalition for Content Provenance and Authenticity (C2PA) technical specification and checked for interoperability against [`c2patool`](https://github.com/contentauth/c2pa-rs/tree/main/cli).
+- The CAWG identity model and the proposed OpenID4VP extension build on the Creator Assertions Working Group draft VC+VP identity assertion.
+- The development-only ES256 certificate and private key embedded in `IIRYCore` are the sample testing material from the `c2patool` / [`c2pa-rs`](https://github.com/contentauth/c2pa-rs) ecosystem. They are included only so the hackathon prototype can exercise C2PA signing mechanics and reference-tool verification; they must not be treated as production signing credentials.
+- The relying-party service follows the OpenID4VP and German EUDI Wallet sandbox flow. Production deployments need real relying-party key material, certificates, trust policy, and operational review.
+- The iOS app uses Apple platform frameworks including SwiftUI, PhotosUI, Uniform Type Identifiers, UIKit sharing, and CryptoKit. The service uses the Python FastAPI ecosystem listed in `service/requirements.txt`.
+
 ## Web Service Serialization
 
 The service can persist decrypted wallet presentation results for local CLI testing, but only when explicitly enabled:
