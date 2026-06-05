@@ -19,7 +19,7 @@ let package = Package(
             teamIdentifier: "FSYXWNUDDW",
             displayVersion: "1.0",
             bundleVersion: "1",
-            appIcon: .placeholder(icon: .barChart),
+            appIcon: .asset("AppIcon"),
             accentColor: .presetColor(.teal),
             supportedDeviceFamilies: [
                 .phone,
@@ -42,7 +42,10 @@ let package = Package(
         .executableTarget(
             name: "AppModule",
             dependencies: ["IIRYCore"],
-            path: "Sources/AppModule"
+            path: "Sources/AppModule",
+            resources: [
+                .process("Resources")
+            ]
         )
     ]
 )

@@ -1053,9 +1053,9 @@ struct HeroPanel: View {
     @Bindable var model: IIRYAppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            IrinaLensArtwork()
-                .frame(height: 220)
+        VStack(alignment: .leading, spacing: 18) {
+            IIRYHeroImage()
+                .frame(height: 156)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
             VStack(alignment: .leading, spacing: 7) {
@@ -1063,15 +1063,17 @@ struct HeroPanel: View {
                     .font(.system(size: 46, weight: .black, design: .rounded))
                     .foregroundStyle(IIRYPalette.ink)
 
-                Text("seeks to help confirm Is It Really You?")
+                Text("Is It Really You?")
                     .font(.system(size: 18, weight: .semibold, design: .rounded))
                     .foregroundStyle(IIRYPalette.plum)
 
-                Text("A wallet-backed signal for challenged images: fresh presentation, image binding, and verification checks.")
+                Text("A wallet-backed signal for challenged images: visible request text, image binding, and verification checks.")
                     .font(.system(size: 15, weight: .medium, design: .rounded))
                     .foregroundStyle(IIRYPalette.ink.opacity(0.70))
                     .lineSpacing(2)
             }
+
+            ChallengeFlowSummary(requestText: model.requestText)
 
             HStack(spacing: 10) {
                 Button {
@@ -1099,17 +1101,101 @@ struct HeroPanel: View {
                 .buttonStyle(IIRYIconButtonStyle())
                 .accessibilityLabel("Settings")
             }
-
-            Text(model.requestText)
-                .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                .foregroundStyle(IIRYPalette.ink.opacity(0.72))
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(IIRYPalette.panel.opacity(0.78), in: RoundedRectangle(cornerRadius: 8))
         }
         .padding(14)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(IIRYPalette.line, lineWidth: 1))
+    }
+}
+
+struct IIRYHeroImage: View {
+    var body: some View {
+        Image("IIRYHero")
+            .resizable()
+            .scaledToFill()
+            .accessibilityLabel("IIRY assistant checking a message challenge")
+    }
+}
+
+struct ChallengeFlowSummary: View {
+    let requestText: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
+                FlowStep(icon: "message", title: "Challenge")
+                ConnectorLine()
+                FlowStep(icon: "wallet.pass", title: "Wallet")
+                ConnectorLine()
+                FlowStep(icon: "photo", title: "Image")
+            }
+
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(IIRYPalette.ink.opacity(0.74))
+                    .frame(width: 28, height: 28)
+                    .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 6))
+                    .accessibilityHidden(true)
+
+                Text(requestText)
+                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(IIRYPalette.ink.opacity(0.78))
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.82)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(12)
+            .background(IIRYPalette.panel.opacity(0.82), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(IIRYPalette.ink.opacity(0.08), lineWidth: 1))
+        }
+        .padding(12)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color.white.opacity(0.74),
+                    IIRYPalette.cyan.opacity(0.08)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 8)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(IIRYPalette.ink.opacity(0.08), lineWidth: 1))
+    }
+}
+
+struct FlowStep: View {
+    let icon: String
+    let title: String
+
+    var body: some View {
+        VStack(spacing: 7) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(IIRYPalette.ink)
+                .frame(width: 34, height: 34)
+                .background(Color.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(IIRYPalette.ink.opacity(0.08), lineWidth: 1))
+                .accessibilityHidden(true)
+
+            Text(title)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(IIRYPalette.ink.opacity(0.68))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(width: 64)
+    }
+}
+
+struct ConnectorLine: View {
+    var body: some View {
+        Rectangle()
+            .fill(IIRYPalette.ink.opacity(0.16))
+            .frame(height: 1)
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 18)
     }
 }
 
@@ -1415,70 +1501,6 @@ struct GridLines: Shape {
             y += step
         }
         return path
-    }
-}
-
-struct IrinaLensArtwork: View {
-    var body: some View {
-        Canvas { context, size in
-            let rect = CGRect(origin: .zero, size: size)
-            context.fill(Path(rect), with: .linearGradient(
-                Gradient(colors: [IIRYPalette.ink, IIRYPalette.plum, IIRYPalette.cyan]),
-                startPoint: CGPoint(x: 0, y: 0),
-                endPoint: CGPoint(x: size.width, y: size.height)
-            ))
-
-            let lens = CGRect(x: size.width * 0.52, y: size.height * 0.17, width: size.width * 0.32, height: size.width * 0.32)
-            context.stroke(Path(ellipseIn: lens), with: .color(.white.opacity(0.86)), lineWidth: 5)
-            context.stroke(Path(ellipseIn: lens.insetBy(dx: 10, dy: 10)), with: .color(IIRYPalette.amber.opacity(0.92)), lineWidth: 2)
-
-            var handle = Path()
-            handle.move(to: CGPoint(x: lens.midX + lens.width * 0.30, y: lens.midY + lens.height * 0.30))
-            handle.addLine(to: CGPoint(x: size.width * 0.89, y: size.height * 0.82))
-            context.stroke(handle, with: .color(.white.opacity(0.82)), lineWidth: 7)
-
-            var profile = Path()
-            profile.move(to: CGPoint(x: size.width * 0.22, y: size.height * 0.74))
-            profile.addCurve(
-                to: CGPoint(x: size.width * 0.42, y: size.height * 0.23),
-                control1: CGPoint(x: size.width * 0.21, y: size.height * 0.42),
-                control2: CGPoint(x: size.width * 0.29, y: size.height * 0.24)
-            )
-            profile.addCurve(
-                to: CGPoint(x: size.width * 0.54, y: size.height * 0.63),
-                control1: CGPoint(x: size.width * 0.54, y: size.height * 0.26),
-                control2: CGPoint(x: size.width * 0.57, y: size.height * 0.49)
-            )
-            profile.addCurve(
-                to: CGPoint(x: size.width * 0.22, y: size.height * 0.74),
-                control1: CGPoint(x: size.width * 0.44, y: size.height * 0.78),
-                control2: CGPoint(x: size.width * 0.32, y: size.height * 0.82)
-            )
-            context.fill(profile, with: .color(.white.opacity(0.18)))
-            context.stroke(profile, with: .color(.white.opacity(0.72)), lineWidth: 2)
-
-            var ear = Path()
-            ear.move(to: CGPoint(x: size.width * 0.30, y: size.height * 0.34))
-            ear.addLine(to: CGPoint(x: size.width * 0.18, y: size.height * 0.25))
-            ear.addLine(to: CGPoint(x: size.width * 0.27, y: size.height * 0.44))
-            context.fill(ear, with: .color(IIRYPalette.amber.opacity(0.34)))
-            context.stroke(ear, with: .color(.white.opacity(0.65)), lineWidth: 1.5)
-
-            for index in 0..<9 {
-                let y = size.height * (0.18 + CGFloat(index) * 0.075)
-                var signal = Path()
-                signal.move(to: CGPoint(x: size.width * 0.08, y: y))
-                signal.addLine(to: CGPoint(x: size.width * 0.92, y: y + (index.isMultiple(of: 2) ? 6 : -4)))
-                context.stroke(signal, with: .color(.white.opacity(0.11)), lineWidth: 1)
-            }
-        }
-        .overlay(alignment: .bottomLeading) {
-            Text("Signals, not absolutes")
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.92))
-                .padding(12)
-        }
-        .accessibilityLabel("Stylized signal lens artwork")
     }
 }
 

@@ -13,6 +13,7 @@
 		184D65ED2EC72B8E558ADC1D /* C2PAAsset.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2D7B5309D57F832EA9D9996 /* C2PAAsset.swift */; };
 		2A68C4D6F0C141C2E3782CFF /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BAE8996F9C8A948A8D53B10 /* Models.swift */; };
 		2D940C8BF4EC8EA41012F641 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6E7EDA9698CF52F3936A30 /* ShareViewController.swift */; };
+		2F2F4F7A0B1C4A5D9E8F7012 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2F2F4F790B1C4A5D9E8F7012 /* Assets.xcassets */; };
 		40298C77771F6D9C5767ADC8 /* RequestText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 878DB033BF7AAE0FFC97364D /* RequestText.swift */; };
 		44C0F5CACBF57C663E59EE6C /* IIRYCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = B282773EF98611D22F0CFE6F /* IIRYCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		453FE6845851ED3D2879D394 /* Nonce.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23C63D42E7EB1CB9B810D016 /* Nonce.swift */; };
@@ -91,6 +92,7 @@
 		23C63D42E7EB1CB9B810D016 /* Nonce.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Nonce.swift; path = IIRY.swiftpm/Sources/IIRYCore/Nonce.swift; sourceTree = "<group>"; };
 		292FC5BA35A63793E6CBE4D9 /* Errors.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Errors.swift; path = IIRY.swiftpm/Sources/IIRYCore/Errors.swift; sourceTree = "<group>"; };
 		2DBCC645CACE9B6DFF4EE8B9 /* JSONCoding.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = JSONCoding.swift; path = IIRY.swiftpm/Sources/IIRYCore/JSONCoding.swift; sourceTree = "<group>"; };
+		2F2F4F790B1C4A5D9E8F7012 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = IIRY.swiftpm/Sources/AppModule/Resources/Assets.xcassets; sourceTree = "<group>"; };
 		34A83A7DFE0DDB620C5FE0F5 /* C2PAManifest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = C2PAManifest.swift; path = IIRY.swiftpm/Sources/IIRYCore/C2PAManifest.swift; sourceTree = "<group>"; };
 		52B8DFAFD7A3F344226FE573 /* App.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = App.swift; path = IIRY.swiftpm/Sources/AppModule/App.swift; sourceTree = "<group>"; };
 		52E449C7AD2B2259AD1836EB /* ProofBuilder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProofBuilder.swift; path = IIRY.swiftpm/Sources/IIRYCore/ProofBuilder.swift; sourceTree = "<group>"; };
@@ -166,6 +168,7 @@
 			isa = PBXGroup;
 			children = (
 				52B8DFAFD7A3F344226FE573 /* App.swift */,
+				2F2F4F790B1C4A5D9E8F7012 /* Assets.xcassets */,
 			);
 			name = AppModule;
 			sourceTree = "<group>";
@@ -331,6 +334,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2F2F4F7A0B1C4A5D9E8F7012 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
