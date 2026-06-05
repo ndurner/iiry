@@ -1127,7 +1127,7 @@ struct ChallengeFlowSummary: View {
                 ConnectorLine()
                 FlowStep(icon: "wallet.pass", title: "Wallet")
                 ConnectorLine()
-                FlowStep(icon: "photo", title: "Image")
+                FlowStep(icon: "photo", title: "Commitment")
             }
 
             HStack(alignment: .top, spacing: 10) {
