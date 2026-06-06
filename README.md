@@ -1,6 +1,23 @@
-# IIRY
+<p align="center">
+  <img src="docs/assets/iiry-readme-hero-experimental.png" alt="IIRY app hero image" width="100%">
+</p>
 
-IIRY seeks to help confirm **Is It Really You?**
+<h1 align="center">IIRY</h1>
+
+<p align="center">
+  <strong>Is It Really You?</strong><br>
+  A hackathon prototype for binding a German EUDI Wallet holder presentation to a JPEG.
+</p>
+
+<p align="center">
+  <a href="https://www.swift.org/"><img alt="Swift 6" src="https://img.shields.io/badge/Swift-6.0-F05138?logo=swift&logoColor=white"></a>
+  <img alt="iOS 17+" src="https://img.shields.io/badge/iOS-17%2B-111111?logo=apple&logoColor=white">
+  <img alt="macOS 15 CLI" src="https://img.shields.io/badge/macOS-15%2B-111111?logo=apple&logoColor=white">
+  <a href="https://c2pa.org/"><img alt="C2PA profile" src="https://img.shields.io/badge/C2PA-constrained%20JPEG%20profile-2F855A"></a>
+  <a href="docs/cawg-eudi-extension.md"><img alt="CAWG VC+VP plus IIRY extension" src="https://img.shields.io/badge/CAWG-VC%2BVP%20%2B%20IIRY%20extension-8A5CF6"></a>
+  <a href="https://openid.net/specs/openid-4-verifiable-presentations-1_0-final.html"><img alt="OpenID4VP" src="https://img.shields.io/badge/OpenID4VP-holder%20binding-2563EB"></a>
+  <img alt="Prototype" src="https://img.shields.io/badge/status-hackathon%20prototype-7C3AED">
+</p>
 
 This hackathon MVP binds a German EUDI Wallet Verifiable Presentation to a JPEG. This can be useful, for example, to commit to a screenshot of a WhatsApp conversation. In the case of a request for something, this would give the receiver another signal whether or not the request is genuine. 
 
@@ -8,6 +25,24 @@ While this may sound a lot like chat forensics, the security claim actually is *
 > This exact image is cryptographically bound to a fresh German EUDI Wallet holder presentation for the disclosed identity attributes, and the binding verified.
 
 IIRY does **not** prove that a WhatsApp account belongs to the wallet holder, that the conversation content is true, or that a bank-transfer request by itself is legitimate. It proves image binding, credential presentation verification, holder-binding freshness, and verifier policy checks.
+
+## Quick Links
+
+- [Parts](#parts)
+- [Core Idea](#core-idea)
+- [Nonce Payload](#nonce-payload)
+- [C2PA Status](#c2pa-status)
+- [Build](#build)
+- [References](#references)
+
+## Demo Shape
+
+| Surface | Role |
+| --- | --- |
+| iPhone app | Captures or imports an image, shows the human challenge text, runs the wallet flow, and exports an IIRY carrier. |
+| Shared Swift core | Implements nonce encoding, asset hashing, proof-bundle encoding, carrier parsing, JPEG/C2PA insertion, and validation. |
+| macOS CLI | Verifies IIRY carriers and JPEGs through the same `IIRYCore` implementation used by the app. |
+| FastAPI service | Drives the OpenID4VP relying-party flow and returns wallet response material to the app. |
 
 ## Parts
 
