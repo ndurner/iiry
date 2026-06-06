@@ -10,7 +10,9 @@
 </p>
 
 <p align="center">
-  <a href="https://www.swift.org/"><img alt="Swift 6" src="https://img.shields.io/badge/Swift-6.0-F05138?logo=swift&logoColor=white"></a>
+  <a href="https://www.swift.org/"><img alt="Swift app and CLI" src="https://img.shields.io/badge/Swift-app%20%2B%20CLI-F05138?logo=swift&logoColor=white"></a>
+  <img alt="Python service" src="https://img.shields.io/badge/Python-service-3776AB?logo=python&logoColor=white">
+  <a href="https://fastapi.tiangolo.com/"><img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-relying%20party-009688?logo=fastapi&logoColor=white"></a>
   <img alt="iOS 17+" src="https://img.shields.io/badge/iOS-17%2B-111111?logo=apple&logoColor=white">
   <img alt="macOS 15 CLI" src="https://img.shields.io/badge/macOS-15%2B-111111?logo=apple&logoColor=white">
   <a href="https://c2pa.org/"><img alt="C2PA profile" src="https://img.shields.io/badge/C2PA-constrained%20JPEG%20profile-2F855A"></a>
