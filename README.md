@@ -42,7 +42,7 @@ IIRY does **not** prove that a WhatsApp account belongs to the wallet holder, th
 | Surface | Role |
 | --- | --- |
 | iPhone app | Captures or imports an image, shows the human challenge text, runs the wallet flow, and exports a signed C2PA JPEG using the protective `.iiry` extension. |
-| Shared Swift core | Implements nonce encoding, asset hashing, proof-bundle encoding, CAWG identity assertion encoding, JPEG/C2PA insertion, and validation. |
+| Shared Swift core | Implements nonce encoding, asset hashing, CAWG identity assertion encoding, JPEG/C2PA insertion, and validation. |
 | macOS CLI | Signs and verifies C2PA JPEGs through the same `IIRYCore` implementation used by the app. |
 | FastAPI service | Drives the OpenID4VP relying-party flow and returns wallet response material to the app. |
 

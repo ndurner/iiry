@@ -43,8 +43,8 @@ struct IIRYCLI {
         let imageData = try Data(contentsOf: imageURL)
         let prepared = try IIRYProofBuilder.prepare(imageData: imageData)
         let responseData = try Data(contentsOf: URL(fileURLWithPath: presentationPath))
-        let updated = try IIRYProofBuilder.attachPresentation(carrier: prepared.carrier, decodedResponseJSON: responseData)
-        let signed = try IIRYC2PAAssetProcessor.signJPEG(carrier: updated)
+        let updated = try IIRYProofBuilder.attachPresentation(draft: prepared.draft, decodedResponseJSON: responseData)
+        let signed = try IIRYC2PAAssetProcessor.signJPEG(draft: updated)
         let outURL = output ?? imageURL
             .deletingLastPathComponent()
             .appendingPathComponent(IIRYFileNames.c2paTransportFileName(from: updated.suggestedFileName))

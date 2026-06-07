@@ -25,7 +25,6 @@
 		A0D5911691A301554DBA63B6 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B8DFAFD7A3F344226FE573 /* App.swift */; };
 		B69A41C3619F558321268A33 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 74DD9888BA9D0982DC4E83B3 /* Foundation.framework */; };
 		BA6009BA5DA831CA1A3D70D3 /* C2PAInspection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C614BD0A5EE2C4F69F4DBA05 /* C2PAInspection.swift */; };
-		D4A28782661E73B20F804AC8 /* Verifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BFC033D92BBCAF86F4CE52F /* Verifier.swift */; };
 		DDE59DAF33CDC5EE86AD3282 /* Hashing.swift in Sources */ = {isa = PBXBuildFile; fileRef = C571CED3156D08AB4AD5E92F /* Hashing.swift */; };
 		DF24A14746F52DB71A80CDA1 /* ProofBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52E449C7AD2B2259AD1836EB /* ProofBuilder.swift */; };
 		F94BE31FE3FACFF576D8BBDE /* Errors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 292FC5BA35A63793E6CBE4D9 /* Errors.swift */; };
@@ -96,7 +95,6 @@
 		52E449C7AD2B2259AD1836EB /* ProofBuilder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProofBuilder.swift; path = IIRY.swiftpm/Sources/IIRYCore/ProofBuilder.swift; sourceTree = "<group>"; };
 		551D2B28BD95E5C9CC56B20D /* IIRYShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = IIRYShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		57CCDC16081AD7749213C95A /* IIRY.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = IIRY.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		5BFC033D92BBCAF86F4CE52F /* Verifier.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Verifier.swift; path = IIRY.swiftpm/Sources/IIRYCore/Verifier.swift; sourceTree = "<group>"; };
 		74DD9888BA9D0982DC4E83B3 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		878DB033BF7AAE0FFC97364D /* RequestText.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RequestText.swift; path = IIRY.swiftpm/Sources/IIRYCore/RequestText.swift; sourceTree = "<group>"; };
 		8E6E7EDA9698CF52F3936A30 /* ShareViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShareViewController.swift; path = ShareExtension/ShareViewController.swift; sourceTree = "<group>"; };
@@ -205,7 +203,6 @@
 				FF7F711B9223BAB47B16F1DA /* PresentationExtractor.swift */,
 				52E449C7AD2B2259AD1836EB /* ProofBuilder.swift */,
 				878DB033BF7AAE0FFC97364D /* RequestText.swift */,
-				5BFC033D92BBCAF86F4CE52F /* Verifier.swift */,
 			);
 			name = IIRYCore;
 			sourceTree = "<group>";
@@ -378,7 +375,6 @@
 				98E761B9B551EDB54EF808D8 /* PresentationExtractor.swift in Sources */,
 				DF24A14746F52DB71A80CDA1 /* ProofBuilder.swift in Sources */,
 				40298C77771F6D9C5767ADC8 /* RequestText.swift in Sources */,
-				D4A28782661E73B20F804AC8 /* Verifier.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -7,7 +7,6 @@ public enum IIRYConstants {
     public static let nonceType = "io.github.ndurner.iiry.openid4vp-nonce.v2"
     public static let proofBundleType = "io.github.ndurner.iiry.proof-bundle.v1"
     public static let cawgIdentityAssertionLabel = "cawg.identity"
-    public static let carrierType = "io.github.ndurner.iiry.carrier.v1"
     public static let carrierExtension = "iiry"
     public static let carrierUTType = "de.ndurner.iiry.c2pa-file"
     public static let carrierMediaType = "application/vnd.io.github.ndurner.iiry.c2pa"

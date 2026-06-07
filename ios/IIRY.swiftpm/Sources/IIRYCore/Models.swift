@@ -171,25 +171,16 @@ public struct IIRYProofBundle: Codable, Equatable {
     }
 }
 
-public struct IIRYCarrier: Codable, Equatable {
-    public var type: String
-    public var version: Int
-    public var mediaType: String
+public struct IIRYCommitmentDraft: Equatable {
     public var suggestedFileName: String
     public var imageB64URL: String
     public var proof: IIRYProofBundle
 
     public init(
-        type: String = IIRYConstants.carrierType,
-        version: Int = 1,
-        mediaType: String = IIRYConstants.jpegMediaType,
         suggestedFileName: String,
         imageB64URL: String,
         proof: IIRYProofBundle
     ) {
-        self.type = type
-        self.version = version
-        self.mediaType = mediaType
         self.suggestedFileName = suggestedFileName
         self.imageB64URL = imageB64URL
         self.proof = proof

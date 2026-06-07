@@ -3,12 +3,12 @@ import Foundation
 public struct IIRYPreparedProof {
     public var nonce: String
     public var proof: IIRYProofBundle
-    public var carrier: IIRYCarrier
+    public var draft: IIRYCommitmentDraft
 
-    public init(nonce: String, proof: IIRYProofBundle, carrier: IIRYCarrier) {
+    public init(nonce: String, proof: IIRYProofBundle, draft: IIRYCommitmentDraft) {
         self.nonce = nonce
         self.proof = proof
-        self.carrier = carrier
+        self.draft = draft
     }
 }
 
@@ -50,20 +50,20 @@ public enum IIRYProofBuilder {
             disclosedClaims: [:]
         )
         let fileName = IIRYFileNames.proofFileName(date: now, noncePayload: nonceResult.payload)
-        let carrier = IIRYCarrier(
+        let draft = IIRYCommitmentDraft(
             suggestedFileName: fileName,
             imageB64URL: Base64URL.encode(imageData),
             proof: proof
         )
-        return IIRYPreparedProof(nonce: nonceResult.nonce, proof: proof, carrier: carrier)
+        return IIRYPreparedProof(nonce: nonceResult.nonce, proof: proof, draft: draft)
     }
 
     public static func attachPresentation(
-        carrier: IIRYCarrier,
+        draft: IIRYCommitmentDraft,
         decodedResponseJSON: Data,
         walletVerification: WalletVerificationSummary? = nil
-    ) throws -> IIRYCarrier {
-        var updated = carrier
+    ) throws -> IIRYCommitmentDraft {
+        var updated = draft
         guard let presentation = try PresentationExtractor.firstPresentation(fromDecodedResponseJSON: decodedResponseJSON) else {
             throw IIRYError.invalidCarrier("OpenID4VP response did not contain a vp_token presentation")
         }
@@ -77,17 +77,5 @@ public enum IIRYProofBuilder {
         updated.proof.openID4VP.walletVerification = walletVerification
         updated.proof.disclosedClaims = PresentationExtractor.disclosedClaims(fromPresentation: presentation)
         return updated
-    }
-
-    public static func carrierData(_ carrier: IIRYCarrier, pretty: Bool = true) throws -> Data {
-        try JSONCoding.encoder(pretty: pretty).encode(carrier)
-    }
-
-    public static func decodeCarrier(_ data: Data) throws -> IIRYCarrier {
-        let carrier = try JSONCoding.decoder().decode(IIRYCarrier.self, from: data)
-        guard carrier.type == IIRYConstants.carrierType else {
-            throw IIRYError.invalidCarrier("Unexpected carrier type \(carrier.type)")
-        }
-        return carrier
     }
 }

@@ -12,8 +12,8 @@ public struct IIRYC2PASignedAsset {
 }
 
 public enum IIRYC2PAAssetProcessor {
-    public static func signJPEG(carrier: IIRYCarrier) throws -> IIRYC2PASignedAsset {
-        let visualJPEG = try Base64URL.decode(carrier.imageB64URL)
+    public static func signJPEG(draft: IIRYCommitmentDraft) throws -> IIRYC2PASignedAsset {
+        let visualJPEG = try Base64URL.decode(draft.imageB64URL)
         guard IIRYJPEGC2PA.isJPEG(visualJPEG) else {
             throw IIRYError.invalidCarrier("IIRY C2PA profile currently supports JPEG only")
         }
@@ -24,7 +24,7 @@ public enum IIRYC2PAAssetProcessor {
 
         for _ in 0..<8 {
             let store = try IIRYC2PAProfileStore.build(
-                carrier: carrier,
+                draft: draft,
                 dataHash: dataHash,
                 exclusions: exclusions,
                 signer: signer
@@ -100,14 +100,14 @@ public enum IIRYC2PAAssetProcessor {
         return IIRYVerificationReport(checks: checks)
     }
 
-    public static func carrier(fromJPEGData imageData: Data, suggestedFileName: String) throws -> IIRYCarrier {
+    public static func draft(fromJPEGData imageData: Data, suggestedFileName: String) throws -> IIRYCommitmentDraft {
         let profile = try IIRYC2PAProfileStore.read(fromJPEG: imageData)
         guard let identity = profile.cawgIdentity else {
             throw IIRYError.invalidCarrier("C2PA manifest does not contain a CAWG identity assertion")
         }
         let visualJPEG = try IIRYJPEGC2PA.stripC2PASegments(fromJPEG: imageData)
         let proof = try proofBundle(from: identity, imageData: visualJPEG)
-        return IIRYCarrier(
+        return IIRYCommitmentDraft(
             suggestedFileName: suggestedFileName,
             imageB64URL: Base64URL.encode(visualJPEG),
             proof: proof
@@ -468,7 +468,7 @@ private enum IIRYC2PAProfileStore {
     private static let cborUUID = "63626F7200110010800000AA00389B71"
 
     static func build(
-        carrier: IIRYCarrier,
+        draft: IIRYCommitmentDraft,
         dataHash: Data,
         exclusions: [IIRYC2PAHashRange],
         signer: IIRYC2PADevSigner
@@ -487,7 +487,7 @@ private enum IIRYC2PAProfileStore {
             hash: Hashing.sha256(JUMBF.superBoxPayload(dataHashBox))
         )
         let cawgIdentityCBOR = try IIRYC2PACBOR.cawgIdentityAssertion(
-            proof: carrier.proof,
+            proof: draft.proof,
             referencedAssertions: [dataHashReference]
         )
 
@@ -513,7 +513,7 @@ private enum IIRYC2PAProfileStore {
         }
         let claimCBOR = try IIRYC2PACBOR.claimV2(
             claimGeneratorName: IIRYConstants.claimGenerator,
-            title: carrier.suggestedFileName,
+            title: draft.suggestedFileName,
             instanceID: "xmp:iid:\(UUID().uuidString.lowercased())",
             signatureURL: "self#jumbf=/c2pa/\(manifestLabel)/c2pa.signature",
             createdAssertions: assertionReferences.filter { $0.label == "c2pa.hash.data" },

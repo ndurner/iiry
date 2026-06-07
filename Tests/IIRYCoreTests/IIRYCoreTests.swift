@@ -31,26 +31,10 @@ import Testing
         randomNonce: random
     )
 
-    #expect(prepared.carrier.suggestedFileName == "IIRY-Commitment-2026-06-02-QKJCQKJC.jpg.c2pa.cawg.iiry")
+    #expect(prepared.draft.suggestedFileName == "IIRY-Commitment-2026-06-02-QKJCQKJC.jpg.c2pa.cawg.iiry")
     #expect(prepared.proof.noncePayload == (try IIRYNonce.decode(prepared.nonce)))
     #expect(prepared.proof.openID4VP.nonce == prepared.nonce)
     #expect(prepared.proof.cawg.sigType == IIRYConstants.cawgOpenID4VPSigType)
-}
-
-@Test func verificationDetectsImageTampering() throws {
-    let image = Data([0xff, 0xd8, 0x01, 0xff, 0xd9])
-    let prepared = try IIRYProofBuilder.prepare(
-        imageData: image,
-        randomNonce: Data(repeating: 0x11, count: 32)
-    )
-    let report = try IIRYVerifier.verifyCarrier(prepared.carrier)
-    #expect(report.checks.first { $0.id == "asset_hash" }?.passed == true)
-    #expect(report.overallPassed == false)
-
-    var tampered = prepared.carrier
-    tampered.imageB64URL = Base64URL.encode(Data([0xff, 0xd8, 0x02, 0xff, 0xd9]))
-    let tamperedReport = try IIRYVerifier.verifyCarrier(tampered)
-    #expect(tamperedReport.checks.first { $0.id == "asset_hash" }?.passed == false)
 }
 
 @Test func attachPresentationExtractsNonceAndClaims() throws {
@@ -67,8 +51,8 @@ import Testing
         ]
     ]
     let responseData = try JSONCoding.objectData(response)
-    let carrier = try IIRYProofBuilder.attachPresentation(
-        carrier: prepared.carrier,
+    let draft = try IIRYProofBuilder.attachPresentation(
+        draft: prepared.draft,
         decodedResponseJSON: responseData,
         walletVerification: WalletVerificationSummary(
             issuerSignature: true,
@@ -81,24 +65,19 @@ import Testing
         )
     )
 
-    #expect(carrier.proof.openID4VP.state == "test-state")
-    #expect(carrier.proof.disclosedClaims["given_name"] == "ERIKA")
-    #expect(carrier.proof.disclosedClaims["family_name"] == "MUSTERMANN")
-    #expect(carrier.proof.committedPersonName == "ERIKA MUSTERMANN")
-
-    let report = try IIRYVerifier.verifyCarrier(carrier)
-    #expect(report.checks.first { $0.id == "presentation_nonce" }?.passed == true)
-    #expect(report.checks.first { $0.id == "wallet_service_verification" }?.passed == true)
-    #expect(report.checks.first { $0.id == "pid_name_disclosed" }?.passed == true)
-    #expect(report.checks.first { $0.id == "pid_name_disclosed" }?.detail == "ERIKA MUSTERMANN")
-    #expect(report.overallPassed == true)
+    #expect(draft.proof.openID4VP.state == "test-state")
+    #expect(draft.proof.disclosedClaims["given_name"] == "ERIKA")
+    #expect(draft.proof.disclosedClaims["family_name"] == "MUSTERMANN")
+    #expect(draft.proof.committedPersonName == "ERIKA MUSTERMANN")
+    #expect(try PresentationExtractor.nonce(fromPresentation: presentation) == prepared.nonce)
+    #expect(draft.proof.openID4VP.walletVerification?.allKnownChecksPassed == true)
 }
 
 @Test func c2paProfileRoundTripsAndKeepsVisualJPEGStable() throws {
     let image = Data([0xff, 0xd8, 0xff, 0xd9])
-    let carrier = try preparedCarrierWithPresentation(image: image)
+    let draft = try preparedDraftWithPresentation(image: image)
 
-    let signed = try IIRYC2PAAssetProcessor.signJPEG(carrier: carrier)
+    let signed = try IIRYC2PAAssetProcessor.signJPEG(draft: draft)
     let stripped = try IIRYJPEGC2PA.stripC2PASegments(fromJPEG: signed.jpegData)
     let report = try IIRYC2PAAssetProcessor.verifyJPEG(signed.jpegData)
 
@@ -115,8 +94,8 @@ import Testing
 
 @Test func c2paProfileDetectsVisualByteReplay() throws {
     let image = Data([0xff, 0xd8, 0x01, 0xff, 0xd9])
-    let carrier = try preparedCarrierWithPresentation(image: image)
-    let signed = try IIRYC2PAAssetProcessor.signJPEG(carrier: carrier)
+    let draft = try preparedDraftWithPresentation(image: image)
+    let signed = try IIRYC2PAAssetProcessor.signJPEG(draft: draft)
 
     var tampered = signed.jpegData
     tampered[tampered.count - 3] = 0x02
@@ -128,8 +107,8 @@ import Testing
 
 @Test func c2paProfileDetectsSignatureTampering() throws {
     let image = Data([0xff, 0xd8, 0xff, 0xd9])
-    let carrier = try preparedCarrierWithPresentation(image: image)
-    let signed = try IIRYC2PAAssetProcessor.signJPEG(carrier: carrier)
+    let draft = try preparedDraftWithPresentation(image: image)
+    let signed = try IIRYC2PAAssetProcessor.signJPEG(draft: draft)
     var tampered = signed.jpegData
     guard let range = try IIRYJPEGC2PA.c2paSegmentRanges(inJPEG: tampered).last else {
         throw IIRYError.commandFailed("C2PA APP11 segment not found")
@@ -142,17 +121,17 @@ import Testing
 }
 
 @Test func c2paProfileRejectsPresentationThatDoesNotMatchWalletResponse() throws {
-    var carrier = try preparedCarrierWithPresentation(image: Data([0xff, 0xd8, 0xff, 0xd9]))
-    carrier.proof.openID4VP.compactPresentation = fakePresentation(nonce: carrier.proof.openID4VP.nonce) + ".tampered"
+    var draft = try preparedDraftWithPresentation(image: Data([0xff, 0xd8, 0xff, 0xd9]))
+    draft.proof.openID4VP.compactPresentation = fakePresentation(nonce: draft.proof.openID4VP.nonce) + ".tampered"
 
     #expect(throws: IIRYError.self) {
-        try IIRYC2PAAssetProcessor.signJPEG(carrier: carrier)
+        try IIRYC2PAAssetProcessor.signJPEG(draft: draft)
     }
 }
 
 @Test func c2paProfileRejectsLegacyCAWGOpenID4VPSigType() throws {
-    let carrier = try preparedCarrierWithPresentation(image: Data([0xff, 0xd8, 0xff, 0xd9]))
-    let signed = try IIRYC2PAAssetProcessor.signJPEG(carrier: carrier)
+    let draft = try preparedDraftWithPresentation(image: Data([0xff, 0xd8, 0xff, 0xd9]))
+    let signed = try IIRYC2PAAssetProcessor.signJPEG(draft: draft)
     var legacy = signed.jpegData
     let current = Data(IIRYConstants.cawgOpenID4VPSigType.utf8)
     let legacyType = Data(IIRYConstants.legacyCAWGOpenID4VPSigTypeV1.utf8)
@@ -167,7 +146,7 @@ import Testing
     }
 }
 
-private func preparedCarrierWithPresentation(image: Data) throws -> IIRYCarrier {
+private func preparedDraftWithPresentation(image: Data) throws -> IIRYCommitmentDraft {
     let prepared = try IIRYProofBuilder.prepare(
         imageData: image,
         randomNonce: Data(repeating: 0x33, count: 32)
@@ -180,7 +159,7 @@ private func preparedCarrierWithPresentation(image: Data) throws -> IIRYCarrier 
         ]
     ])
     return try IIRYProofBuilder.attachPresentation(
-        carrier: prepared.carrier,
+        draft: prepared.draft,
         decodedResponseJSON: responseData,
         walletVerification: WalletVerificationSummary(
             issuerSignature: true,

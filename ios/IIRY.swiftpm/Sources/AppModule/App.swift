@@ -42,7 +42,7 @@ final class IIRYAppModel {
 
     var serviceBaseURL: String
     var requestText: String
-    var carrier: IIRYCarrier?
+    var draft: IIRYCommitmentDraft?
     var pendingSession: PresentationSession?
     var verificationReport: IIRYVerificationReport?
     var selectedImage: UIImage?
@@ -62,7 +62,7 @@ final class IIRYAppModel {
     }
 
     var hasPreparedProof: Bool {
-        carrier != nil
+        draft != nil
     }
 
     func refreshRequestText() {
@@ -148,7 +148,7 @@ final class IIRYAppModel {
     }
 
     func startWalletFlow() async {
-        guard let carrier else {
+        guard let draft else {
             errorMessage = "Import a JPEG first."
             return
         }
@@ -157,7 +157,7 @@ final class IIRYAppModel {
         defer { isBusy = false }
 
         do {
-            let session = try await createPresentationSession(for: carrier)
+            let session = try await createPresentationSession(for: draft)
             pendingSession = session
             statusMessage = "Opening wallet to commit"
             guard let walletURL = URL(string: session.openWalletURL) else {
@@ -272,7 +272,7 @@ final class IIRYAppModel {
     }
 
     func fetchWalletResponse(state: String, token: String) async {
-        guard let carrier else {
+        guard let draft else {
             errorMessage = "No local proof is waiting for this wallet response."
             return
         }
@@ -283,18 +283,18 @@ final class IIRYAppModel {
         do {
             let response = try await walletResponse(state: state, token: token)
             let updated = try IIRYProofBuilder.attachPresentation(
-                carrier: carrier,
+                draft: draft,
                 decodedResponseJSON: response.decodedResponseJSON,
                 walletVerification: response.verification
             )
-            self.carrier = updated
+            self.draft = updated
             self.selectedImage = UIImage(data: try Base64URL.decode(updated.imageB64URL))
             self.verificationReport = nil
             self.signedCommitmentURL = nil
             self.commitmentDisplayMode = .createdCommitment
             self.statusMessage = "Wallet response received; signing C2PA JPEG"
             do {
-                let signed = try IIRYC2PAAssetProcessor.signJPEG(carrier: updated)
+                let signed = try IIRYC2PAAssetProcessor.signJPEG(draft: updated)
                 self.verificationReport = try IIRYC2PAAssetProcessor.verifyJPEG(signed.jpegData)
                 self.signedCommitmentURL = try writeTempData(
                     signed.jpegData,
@@ -310,11 +310,11 @@ final class IIRYAppModel {
     }
 
     func saveReceiptToPhotos() {
-        guard let carrier, let image = selectedImage, let report = verificationReport else {
+        guard let draft, let image = selectedImage, let report = verificationReport else {
             errorMessage = "No verification receipt is ready."
             return
         }
-        let renderer = ImageRenderer(content: ReceiptSnapshotView(carrier: carrier, image: image, report: report))
+        let renderer = ImageRenderer(content: ReceiptSnapshotView(draft: draft, image: image, report: report))
         renderer.scale = UIScreen.main.scale
         guard let output = renderer.uiImage else {
             errorMessage = "Could not render receipt."
@@ -324,7 +324,7 @@ final class IIRYAppModel {
         statusMessage = "Receipt saved"
     }
 
-    private func createPresentationSession(for carrier: IIRYCarrier) async throws -> PresentationSession {
+    private func createPresentationSession(for draft: IIRYCommitmentDraft) async throws -> PresentationSession {
         guard let url = URL(string: "\(serviceBaseURL)/api/presentations") else {
             throw IIRYError.commandFailed("Invalid service URL")
         }
@@ -332,7 +332,7 @@ final class IIRYAppModel {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "nonce": carrier.proof.openID4VP.nonce
+            "nonce": draft.proof.openID4VP.nonce
         ])
         let (data, response) = try await URLSession.shared.data(for: request)
         try validateHTTP(response, data: data)
@@ -375,9 +375,9 @@ final class IIRYAppModel {
 
     private func importC2PAJPEG(_ data: Data, fileName: String) throws {
         let report = try IIRYC2PAAssetProcessor.verifyJPEG(data)
-        let importedCarrier = try IIRYC2PAAssetProcessor.carrier(fromJPEGData: data, suggestedFileName: fileName)
-        let visualData = try Base64URL.decode(importedCarrier.imageB64URL)
-        carrier = importedCarrier
+        let importedDraft = try IIRYC2PAAssetProcessor.draft(fromJPEGData: data, suggestedFileName: fileName)
+        let visualData = try Base64URL.decode(importedDraft.imageB64URL)
+        draft = importedDraft
         signedCommitmentURL = nil
         selectedImage = UIImage(data: visualData)
         verificationReport = report
@@ -390,7 +390,7 @@ final class IIRYAppModel {
     private func prepareImage(_ data: Data, source: ImagePreparationSource) throws {
         let jpegData = try normalizedJPEGData(from: data)
         let prepared = try IIRYProofBuilder.prepare(imageData: jpegData)
-        carrier = prepared.carrier
+        draft = prepared.draft
         signedCommitmentURL = nil
         selectedImage = UIImage(data: jpegData)
         verificationReport = nil
@@ -538,8 +538,8 @@ struct IIRYRootView: View {
     var body: some View {
         ZStack {
             IIRYBackdrop()
-            if let carrier = model.carrier, let image = model.selectedImage {
-                ActiveProofView(model: model, carrier: carrier, image: image)
+            if let draft = model.draft, let image = model.selectedImage {
+                ActiveProofView(model: model, draft: draft, image: image)
             } else {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 18) {
@@ -581,7 +581,7 @@ struct IIRYRootView: View {
 
 struct ActiveProofView: View {
     @Bindable var model: IIRYAppModel
-    let carrier: IIRYCarrier
+    let draft: IIRYCommitmentDraft
     let image: UIImage
     @State private var showsTechnicalChecks = false
     @State private var showsImageInspector = false
@@ -613,7 +613,7 @@ struct ActiveProofView: View {
                     }
 
                     if hasReport {
-                        IdentityBanner(name: carrier.proof.committedPersonNameDisclosureComplete ? carrier.proof.committedPersonName : nil)
+                        IdentityBanner(name: draft.proof.committedPersonNameDisclosureComplete ? draft.proof.committedPersonName : nil)
                     }
 
                     Image(uiImage: image)
@@ -1330,14 +1330,14 @@ struct IntakePanel: View {
 
 struct VerificationPanel: View {
     @Bindable var model: IIRYAppModel
-    let carrier: IIRYCarrier
+    let draft: IIRYCommitmentDraft
     let image: UIImage
 
     var body: some View {
         let hasProof = model.verificationReport?.overallPassed == true
 
         VStack(alignment: .leading, spacing: 14) {
-            SectionTitle(title: model.verificationReport == nil ? "Commitment" : (hasProof ? "Verification" : "Verification failed"), detail: carrier.suggestedFileName)
+            SectionTitle(title: model.verificationReport == nil ? "Commitment" : (hasProof ? "Verification" : "Verification failed"), detail: draft.suggestedFileName)
 
             Image(uiImage: image)
                 .resizable()
@@ -1595,7 +1595,7 @@ enum IIRYPalette {
 }
 
 struct ReceiptSnapshotView: View {
-    let carrier: IIRYCarrier
+    let draft: IIRYCommitmentDraft
     let image: UIImage
     let report: IIRYVerificationReport
 
@@ -1614,7 +1614,7 @@ struct ReceiptSnapshotView: View {
             ForEach(report.checks) { check in
                 CheckRow(check: check)
             }
-            Text(carrier.suggestedFileName)
+            Text(draft.suggestedFileName)
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundStyle(IIRYPalette.ink.opacity(0.58))
         }
