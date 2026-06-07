@@ -64,7 +64,9 @@ public enum IIRYProofBuilder {
         walletVerification: WalletVerificationSummary? = nil
     ) throws -> IIRYCarrier {
         var updated = carrier
-        let presentation = try PresentationExtractor.firstPresentation(fromDecodedResponseJSON: decodedResponseJSON)
+        guard let presentation = try PresentationExtractor.firstPresentation(fromDecodedResponseJSON: decodedResponseJSON) else {
+            throw IIRYError.invalidCarrier("OpenID4VP response did not contain a vp_token presentation")
+        }
         var state: String?
         if let object = try JSONSerialization.jsonObject(with: decodedResponseJSON) as? [String: Any] {
             state = object["state"] as? String
@@ -73,9 +75,7 @@ public enum IIRYProofBuilder {
         updated.proof.openID4VP.compactPresentation = presentation
         updated.proof.openID4VP.state = state
         updated.proof.openID4VP.walletVerification = walletVerification
-        if let presentation {
-            updated.proof.disclosedClaims = PresentationExtractor.disclosedClaims(fromPresentation: presentation)
-        }
+        updated.proof.disclosedClaims = PresentationExtractor.disclosedClaims(fromPresentation: presentation)
         return updated
     }
 

@@ -54,6 +54,8 @@ public enum IIRYC2PAAssetProcessor {
     public static func verifyJPEG(_ imageData: Data) throws -> IIRYVerificationReport {
         let profile = try IIRYC2PAProfileStore.read(fromJPEG: imageData)
         let validation = try validate(profile: profile, imageData: imageData)
+        let visualJPEG = try IIRYJPEGC2PA.stripC2PASegments(fromJPEG: imageData)
+        let materialDigest = try assetBindingMaterialDigest(for: visualJPEG)
         var checks: [IIRYVerificationCheck] = [
             .init(
                 id: "iiry_c2pa_profile",
@@ -80,19 +82,36 @@ public enum IIRYC2PAAssetProcessor {
                 detail: validation.claimAssertionHashDetail
             ),
             .init(
-                id: "c2pa_proof_assertion",
-                label: "Manifest carries IIRY proof assertion",
-                passed: profile.proof != nil,
-                detail: IIRYConstants.proofBundleAssertionLabel
+                id: "cawg_identity_assertion",
+                label: "Manifest carries CAWG identity assertion",
+                passed: profile.cawgIdentity != nil,
+                detail: IIRYConstants.cawgIdentityAssertionLabel
             )
         ]
 
-        if let proof = profile.proof {
-            let visualJPEG = try IIRYJPEGC2PA.stripC2PASegments(fromJPEG: imageData)
-            checks.append(contentsOf: try IIRYVerifier.verify(proof: proof, imageData: visualJPEG).checks)
+        if let identity = profile.cawgIdentity {
+            checks.append(contentsOf: try cawgIdentityChecks(
+                identity: identity,
+                profile: profile,
+                materialDigest: materialDigest
+            ))
         }
 
         return IIRYVerificationReport(checks: checks)
+    }
+
+    public static func carrier(fromJPEGData imageData: Data, suggestedFileName: String) throws -> IIRYCarrier {
+        let profile = try IIRYC2PAProfileStore.read(fromJPEG: imageData)
+        guard let identity = profile.cawgIdentity else {
+            throw IIRYError.invalidCarrier("C2PA manifest does not contain a CAWG identity assertion")
+        }
+        let visualJPEG = try IIRYJPEGC2PA.stripC2PASegments(fromJPEG: imageData)
+        let proof = try proofBundle(from: identity, imageData: visualJPEG)
+        return IIRYCarrier(
+            suggestedFileName: suggestedFileName,
+            imageB64URL: Base64URL.encode(visualJPEG),
+            proof: proof
+        )
     }
 
     public static func visualJPEGData(from imageData: Data) throws -> Data {
@@ -132,6 +151,121 @@ public enum IIRYC2PAAssetProcessor {
             claimAssertionHashDetail: "\(profile.claim.assertions.count) claim references"
         )
     }
+
+    private static func cawgIdentityChecks(
+        identity: IIRYCAWGIdentityAssertion,
+        profile: IIRYC2PAParsedProfile,
+        materialDigest: Data
+    ) throws -> [IIRYVerificationCheck] {
+        let hardBindingReference = profile.claim.assertions.first { $0.label == "c2pa.hash.data" }
+        let referencesHardBinding = hardBindingReference.map { hardBinding in
+            identity.referencedAssertions.contains { reference in
+                reference.url == hardBinding.url &&
+                reference.alg == hardBinding.alg &&
+                reference.hash == hardBinding.hash
+            }
+        } ?? false
+        let evidence = try IIRYCAWGEvidence.decode(identity.signature)
+        let decodedNonce = evidence.nonce.flatMap { try? IIRYNonce.decode($0) }
+        let disclosedClaims = evidence.presentation.map(PresentationExtractor.disclosedClaims(fromPresentation:)) ?? [:]
+        let givenName = disclosedClaims["given_name"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let familyName = disclosedClaims["family_name"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return [
+            .init(
+                id: "cawg_identity_sig_type",
+                label: "CAWG identity assertion uses IIRY OpenID4VP sig_type",
+                passed: identity.sigType == IIRYConstants.cawgOpenID4VPSigType,
+                detail: identity.sigType
+            ),
+            .init(
+                id: "cawg_identity_hard_binding_reference",
+                label: "CAWG identity assertion references c2pa.hash.data",
+                passed: referencesHardBinding,
+                detail: hardBindingReference?.url ?? "Missing c2pa.hash.data claim reference"
+            ),
+            .init(
+                id: "cawg_identity_evidence",
+                label: "CAWG identity signature carries OpenID4VP vp_token",
+                passed: evidence.vpTokenObject != nil,
+                detail: "vp_token"
+            ),
+            .init(
+                id: "openid4vp_vp_token_present",
+                label: "OpenID4VP evidence contains vp_token",
+                passed: evidence.presentation?.isEmpty == false,
+                detail: evidence.presentation == nil ? "Missing vp_token" : "vp_token embedded"
+            ),
+            .init(
+                id: "nonce_decodes",
+                label: "OpenID4VP nonce decodes",
+                passed: decodedNonce != nil,
+                detail: decodedNonce?.type
+            ),
+            .init(
+                id: "nonce_payload",
+                label: "Nonce payload is IIRY OpenID4VP nonce",
+                passed: decodedNonce?.type == IIRYConstants.nonceType && decodedNonce?.version == 2,
+                detail: decodedNonce?.type
+            ),
+            .init(
+                id: "nonce_asset_binding",
+                label: "Nonce binds asset binding digest",
+                passed: decodedNonce?.assetBindingSHA256B64URL == Base64URL.encode(materialDigest),
+                detail: decodedNonce?.assetBindingSHA256B64URL
+            ),
+            .init(
+                id: "presentation_nonce",
+                label: "Presentation nonce matches",
+                passed: evidence.nonce != nil && decodedNonce != nil,
+                detail: evidence.nonce
+            ),
+            .init(
+                id: "pid_name_disclosed",
+                label: "Wallet disclosed committed person's name",
+                passed: givenName?.isEmpty == false && familyName?.isEmpty == false,
+                detail: [givenName, familyName].compactMap { $0 }.joined(separator: " ")
+            )
+        ]
+    }
+
+    private static func proofBundle(from identity: IIRYCAWGIdentityAssertion, imageData: Data) throws -> IIRYProofBundle {
+        let evidence = try IIRYCAWGEvidence.decode(identity.signature)
+        guard let noncePayload = evidence.nonce.flatMap({ try? IIRYNonce.decode($0) }) else {
+            throw IIRYError.invalidCarrier("CAWG identity vp_token does not contain a decodable IIRY nonce")
+        }
+        let assetSHA = Hashing.sha256(imageData)
+        let materialDigest = try assetBindingMaterialDigest(for: imageData)
+        let asset = IIRYAssetBinding(
+            mediaType: IIRYConstants.jpegMediaType,
+            byteLength: imageData.count,
+            sha256B64URL: Base64URL.encode(assetSHA),
+            bindingMaterialSHA256B64URL: Base64URL.encode(materialDigest)
+        )
+        let cawg = IIRYCAWGAssertion(referencedAssertions: identity.referencedAssertions.map {
+            IIRYReferencedAssertion(url: $0.url, hashB64URL: Base64URL.encode($0.hash))
+        })
+        return IIRYProofBundle(
+            createdAt: "",
+            asset: asset,
+            noncePayload: noncePayload,
+            cawg: cawg,
+            openID4VP: OpenID4VPEvidence(
+                nonce: evidence.nonce ?? "",
+                compactPresentation: evidence.presentation
+            ),
+            disclosedClaims: evidence.presentation.map(PresentationExtractor.disclosedClaims(fromPresentation:)) ?? [:]
+        )
+    }
+
+    private static func assetBindingMaterialDigest(for imageData: Data) throws -> Data {
+        let assetSHA = Hashing.sha256(imageData)
+        let material = IIRYAssetBindingMaterial(
+            mediaType: IIRYConstants.jpegMediaType,
+            byteLength: imageData.count,
+            assetSHA256B64URL: Base64URL.encode(assetSHA)
+        )
+        return Hashing.sha256(try JSONCoding.canonicalData(material))
+    }
 }
 
 struct IIRYC2PAHashRange: Codable, Equatable {
@@ -156,7 +290,7 @@ private struct IIRYC2PAProfileBuild {
 private struct IIRYC2PAParsedProfile {
     var manifestLabel: String
     var assertions: [String: IIRYC2PAParsedAssertion]
-    var proof: IIRYProofBundle?
+    var cawgIdentity: IIRYCAWGIdentityAssertion?
     var actions: [String: Any]?
     var dataHash: IIRYC2PADataHash
     var claim: IIRYC2PAClaim
@@ -177,6 +311,37 @@ private struct IIRYC2PADataHash {
     var name: String
     var alg: String
     var hash: Data
+}
+
+private struct IIRYCAWGIdentityAssertion {
+    var sigType: String
+    var referencedAssertions: [IIRYC2PAClaimAssertion]
+    var signature: Data
+}
+
+private struct IIRYCAWGEvidence {
+    var vpTokenObject: [String: Any]?
+    var presentation: String?
+    var nonce: String?
+
+    static func decode(_ data: Data) throws -> IIRYCAWGEvidence {
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw IIRYError.invalidCarrier("Unsupported CAWG OpenID4VP evidence payload: expected v2 JSON object")
+        }
+        guard let vpToken = object["vp_token"] as? [String: Any] else {
+            if object["presentation"] != nil || object["nonce_payload"] != nil || object["wallet_verification"] != nil {
+                throw IIRYError.invalidCarrier("Unsupported CAWG OpenID4VP evidence payload: expected v2 {\"vp_token\": ...}; found pre-v2 expanded evidence")
+            }
+            throw IIRYError.invalidCarrier("Unsupported CAWG OpenID4VP evidence payload: expected v2 {\"vp_token\": ...}")
+        }
+        let presentation = PresentationExtractor.firstPresentation(fromVPTokenObject: vpToken)
+        let nonce = try presentation.flatMap(PresentationExtractor.nonce(fromPresentation:))
+        return IIRYCAWGEvidence(
+            vpTokenObject: vpToken,
+            presentation: presentation,
+            nonce: nonce
+        )
+    }
 }
 
 private struct IIRYC2PAClaimAssertion {
@@ -309,17 +474,26 @@ private enum IIRYC2PAProfileStore {
         signer: IIRYC2PADevSigner
     ) throws -> IIRYC2PAProfileBuild {
         let manifestLabel = "urn:c2pa:\(UUID().uuidString.lowercased())"
-        let proofData = try JSONCoding.encoder(pretty: false).encode(carrier.proof)
         let actionsData = try IIRYC2PACBOR.actions(softwareAgent: IIRYConstants.claimGenerator)
         let dataHashCBOR = try IIRYC2PACBOR.dataHash(
             hash: dataHash,
             exclusions: exclusions,
             name: "IIRY JPEG bytes excluding C2PA APP11 segments"
         )
+        let dataHashBox = try JUMBF.assertion(label: "c2pa.hash.data", contentKind: .cbor, data: dataHashCBOR)
+        let dataHashReference = try IIRYC2PAClaimAssertion(
+            url: "self#jumbf=c2pa.assertions/c2pa.hash.data",
+            alg: "sha256",
+            hash: Hashing.sha256(JUMBF.superBoxPayload(dataHashBox))
+        )
+        let cawgIdentityCBOR = try IIRYC2PACBOR.cawgIdentityAssertion(
+            proof: carrier.proof,
+            referencedAssertions: [dataHashReference]
+        )
 
         let assertionInputs: [(String, Data, IIRYJUMBFContentKind)] = [
             ("c2pa.hash.data", dataHashCBOR, .cbor),
-            (IIRYConstants.proofBundleAssertionLabel, proofData, .json),
+            (IIRYConstants.cawgIdentityAssertionLabel, cawgIdentityCBOR, .cbor),
             ("c2pa.actions.v2", actionsData, .cbor)
         ]
 
@@ -418,16 +592,14 @@ private enum IIRYC2PAProfileStore {
             }
         }
 
-        guard let proofAssertion = parsedAssertions[IIRYConstants.proofBundleAssertionLabel],
-              let proofObject = proofAssertion.jsonObject else {
-            throw IIRYError.invalidCarrier("IIRY proof-bundle assertion is missing")
-        }
         guard let dataHashAssertion = parsedAssertions["c2pa.hash.data"] else {
             throw IIRYError.invalidCarrier("c2pa.hash.data assertion is missing")
         }
+        guard let cawgAssertion = parsedAssertions[IIRYConstants.cawgIdentityAssertionLabel] else {
+            throw IIRYError.invalidCarrier("CAWG identity assertion is missing")
+        }
 
-        let proofData = try JSONCoding.objectData(proofObject)
-        let proof = try JSONCoding.decoder().decode(IIRYProofBundle.self, from: proofData)
+        let cawgIdentity = try IIRYC2PACBOR.decodeCAWGIdentityAssertion(cawgAssertion.data)
         let dataHash = try IIRYC2PACBOR.decodeDataHash(dataHashAssertion.data)
         let claim = try IIRYC2PACBOR.decodeClaim(claimCBOR)
         let actions = try parsedAssertions["c2pa.actions.v2"].map {
@@ -437,7 +609,7 @@ private enum IIRYC2PAProfileStore {
         return IIRYC2PAParsedProfile(
             manifestLabel: manifest.label,
             assertions: parsedAssertions,
-            proof: proof,
+            cawgIdentity: cawgIdentity,
             actions: actions,
             dataHash: dataHash,
             claim: claim,
@@ -897,6 +1069,22 @@ private enum IIRYC2PACBOR {
         return try DeterministicCBOR.encode(.map(pairs))
     }
 
+    static func cawgIdentityAssertion(
+        proof: IIRYProofBundle,
+        referencedAssertions: [IIRYC2PAClaimAssertion]
+    ) throws -> Data {
+        let evidence = try openID4VPEvidence(proof: proof)
+        let signerPayload: CBORValue = .map([
+            (.string("referenced_assertions"), .array(referencedAssertions.map(cawgReference))),
+            (.string("sig_type"), .string(IIRYConstants.cawgOpenID4VPSigType))
+        ])
+        return try DeterministicCBOR.encode(.map([
+            (.string("pad1"), .bytes(Data())),
+            (.string("signature"), .bytes(evidence)),
+            (.string("signer_payload"), signerPayload)
+        ]))
+    }
+
     static func coseSignature(protectedHeader: Data, signature: Data) throws -> Data {
         try DeterministicCBOR.encode(.tagged(18, .array([
             .bytes(protectedHeader),
@@ -938,11 +1126,75 @@ private enum IIRYC2PACBOR {
         return (protectedHeader, signature)
     }
 
+    static func decodeCAWGIdentityAssertion(_ data: Data) throws -> IIRYCAWGIdentityAssertion {
+        guard case .map(let pairs) = try DeterministicCBOR.decode(data) else {
+            throw IIRYError.invalidCBOR("CAWG identity assertion is not a CBOR map")
+        }
+        let assertion = CBORMap(pairs)
+        guard case .map(let signerPayloadPairs) = assertion.values["signer_payload"] else {
+            throw IIRYError.invalidCBOR("CAWG identity assertion missing signer_payload")
+        }
+        let signerPayload = CBORMap(signerPayloadPairs)
+        let sigType = try signerPayload.string("sig_type")
+        guard sigType == IIRYConstants.cawgOpenID4VPSigType else {
+            if sigType == IIRYConstants.legacyCAWGOpenID4VPSigTypeV1 {
+                throw IIRYError.invalidCarrier("Unsupported CAWG OpenID4VP holder-binding profile v1: regenerate the asset with \(IIRYConstants.cawgOpenID4VPSigType)")
+            }
+            throw IIRYError.invalidCarrier("Unsupported CAWG identity sig_type \(sigType); expected \(IIRYConstants.cawgOpenID4VPSigType)")
+        }
+        let references = try signerPayload.array("referenced_assertions").map(decodeReference)
+        return IIRYCAWGIdentityAssertion(
+            sigType: sigType,
+            referencedAssertions: references,
+            signature: try assertion.bytes("signature")
+        )
+    }
+
     private static func claimReference(_ assertion: IIRYC2PAClaimAssertion) -> CBORValue {
         .map([
             (.string("hash"), .bytes(assertion.hash)),
             (.string("url"), .string(assertion.url))
         ])
+    }
+
+    private static func cawgReference(_ assertion: IIRYC2PAClaimAssertion) -> CBORValue {
+        .map([
+            (.string("alg"), .string(assertion.alg)),
+            (.string("hash"), .bytes(assertion.hash)),
+            (.string("url"), .string(assertion.url))
+        ])
+    }
+
+    private static func decodeReference(_ value: CBORValue) throws -> IIRYC2PAClaimAssertion {
+        guard case .map(let pairs) = value else {
+            throw IIRYError.invalidCBOR("CAWG referenced assertion is not a map")
+        }
+        let reference = CBORMap(pairs)
+        return IIRYC2PAClaimAssertion(
+            url: try reference.string("url"),
+            alg: (try? reference.string("alg")) ?? "sha256",
+            hash: try reference.bytes("hash")
+        )
+    }
+
+    private static func openID4VPEvidence(proof: IIRYProofBundle) throws -> Data {
+        guard let compactPresentation = proof.openID4VP.compactPresentation,
+              !compactPresentation.isEmpty else {
+            throw IIRYError.invalidCarrier("CAWG identity evidence requires a vp_token presentation")
+        }
+        guard let responseJSONB64URL = proof.openID4VP.responseJSONB64URL,
+              !responseJSONB64URL.isEmpty else {
+            throw IIRYError.invalidCarrier("CAWG identity evidence requires the decoded OpenID4VP response JSON")
+        }
+        let responseData = try Base64URL.decode(responseJSONB64URL)
+        let responsePresentation = try PresentationExtractor.firstPresentation(fromDecodedResponseJSON: responseData)
+        guard responsePresentation == compactPresentation else {
+            throw IIRYError.invalidCarrier("CAWG identity vp_token does not match the OpenID4VP response JSON")
+        }
+        guard let vpToken = try PresentationExtractor.vpTokenObject(fromDecodedResponseJSON: responseData) else {
+            throw IIRYError.invalidCarrier("OpenID4VP response JSON did not contain a vp_token object")
+        }
+        return try JSONCoding.objectData(["vp_token": vpToken])
     }
 
     static func decodeDataHash(_ data: Data) throws -> IIRYC2PADataHash {
@@ -1076,9 +1328,20 @@ private enum IIRYC2PAProfileReport {
         pretty: Bool
     ) throws -> Data {
         var assertionStore: [String: Any] = [:]
-        if let proof = profile.proof {
-            let proofData = try JSONCoding.encoder(pretty: false).encode(proof)
-            assertionStore[IIRYConstants.proofBundleAssertionLabel] = try JSONSerialization.jsonObject(with: proofData)
+        if let identity = profile.cawgIdentity {
+            assertionStore[IIRYConstants.cawgIdentityAssertionLabel] = [
+                "signer_payload": [
+                    "sig_type": identity.sigType,
+                    "referenced_assertions": identity.referencedAssertions.map {
+                        [
+                            "url": $0.url,
+                            "alg": $0.alg,
+                            "hash": Base64URL.encode($0.hash)
+                        ]
+                    }
+                ],
+                "signature_b64u": Base64URL.encode(identity.signature)
+            ]
         }
         if let actions = profile.actions {
             assertionStore["c2pa.actions.v2"] = actions

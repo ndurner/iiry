@@ -1,6 +1,18 @@
 import Foundation
 
 public enum PresentationExtractor {
+    public static func vpTokenObject(fromDecodedResponseJSON data: Data) throws -> [String: Any]? {
+        guard let dictionary = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let vpToken = dictionary["vp_token"] as? [String: Any] else {
+            return nil
+        }
+        return vpToken
+    }
+
+    public static func firstPresentation(fromVPTokenObject vpToken: [String: Any]) -> String? {
+        firstPresentation(inVPToken: vpToken)
+    }
+
     public static func firstPresentation(fromDecodedResponseJSON data: Data) throws -> String? {
         let object = try JSONSerialization.jsonObject(with: data)
         return firstPresentation(in: object)
@@ -11,6 +23,10 @@ public enum PresentationExtractor {
               let vpToken = dictionary["vp_token"] as? [String: Any] else {
             return nil
         }
+        return firstPresentation(inVPToken: vpToken)
+    }
+
+    private static func firstPresentation(inVPToken vpToken: [String: Any]) -> String? {
         for value in vpToken.values {
             if let presentations = value as? [Any] {
                 for item in presentations {

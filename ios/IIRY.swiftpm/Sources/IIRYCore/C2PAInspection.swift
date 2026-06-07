@@ -2,9 +2,7 @@ import Foundation
 
 public enum IIRYC2PAInspectionVerifier {
     public static func verifyC2PAAsset(imageData: Data, detailedJSON: Data) throws -> IIRYVerificationReport {
-        let proof = try extractProofBundle(fromDetailedJSON: detailedJSON)
-        let visualImage = (try? IIRYJPEGC2PA.stripC2PASegments(fromJPEG: imageData)) ?? imageData
-        var checks = try IIRYVerifier.verify(proof: proof, imageData: visualImage).checks
+        var checks = try IIRYC2PAAssetProcessor.verifyJPEG(imageData).checks
         checks.insert(.init(
             id: "c2pa_data_hash",
             label: "C2PA validator confirms hard binding",
@@ -35,10 +33,10 @@ public enum IIRYC2PAInspectionVerifier {
                 : "signingCredential.untrusted"
         ), at: 3)
         checks.insert(.init(
-            id: "c2pa_proof_assertion",
-            label: "C2PA manifest carries IIRY proof assertion",
-            passed: true,
-            detail: IIRYConstants.proofBundleAssertionLabel
+            id: "cawg_identity_assertion",
+            label: "C2PA manifest carries CAWG identity assertion",
+            passed: hasAssertion(label: IIRYConstants.cawgIdentityAssertionLabel, inDetailedJSON: detailedJSON),
+            detail: IIRYConstants.cawgIdentityAssertionLabel
         ), at: 4)
         checks.insert(.init(
             id: "c2pa_container_image",
@@ -47,23 +45,6 @@ public enum IIRYC2PAInspectionVerifier {
             detail: "\(imageData.count) bytes"
         ), at: 5)
         return IIRYVerificationReport(checks: checks)
-    }
-
-    public static func extractProofBundle(fromDetailedJSON detailedJSON: Data) throws -> IIRYProofBundle {
-        guard let root = try JSONSerialization.jsonObject(with: detailedJSON) as? [String: Any],
-              let active = root["active_manifest"] as? String,
-              let manifests = root["manifests"] as? [String: Any],
-              let manifest = manifests[active] as? [String: Any],
-              let assertionStore = manifest["assertion_store"] as? [String: Any] else {
-            throw IIRYError.invalidCarrier("C2PA report did not contain an active assertion store")
-        }
-        let proofObject = assertionStore[IIRYConstants.proofBundleAssertionLabel]
-            ?? assertionStore[IIRYConstants.proofBundleType]
-        guard let proofObject else {
-            throw IIRYError.invalidCarrier("C2PA manifest did not contain the IIRY proof-bundle assertion")
-        }
-        let proofData = try JSONCoding.objectData(proofObject)
-        return try JSONCoding.decoder().decode(IIRYProofBundle.self, from: proofData)
     }
 
     public static func validationState(fromDetailedJSON detailedJSON: Data) throws -> String? {
@@ -107,5 +88,16 @@ public enum IIRYC2PAInspectionVerifier {
         let gathered = (claim["gathered_assertions"] as? [[String: Any]])?.count ?? 0
         let assertions = (claim["assertions"] as? [[String: Any]])?.count ?? 0
         return max(assertions, created + gathered)
+    }
+
+    private static func hasAssertion(label: String, inDetailedJSON detailedJSON: Data) -> Bool {
+        guard let root = try? JSONSerialization.jsonObject(with: detailedJSON) as? [String: Any],
+              let active = root["active_manifest"] as? String,
+              let manifests = root["manifests"] as? [String: Any],
+              let manifest = manifests[active] as? [String: Any],
+              let assertionStore = manifest["assertion_store"] as? [String: Any] else {
+            return false
+        }
+        return assertionStore[label] != nil
     }
 }

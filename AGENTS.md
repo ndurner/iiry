@@ -16,10 +16,10 @@ Do not duplicate nonce encoding, asset hashing, proof-bundle encoding, carrier p
 
 - Do not claim that IIRY proves WhatsApp account ownership or message truth.
 - Do not claim C2PA validity unless a real C2PA manifest and claim signature validate.
-- The Swift core implements the constrained IIRY JPEG/C2PA profile: JPEG APP11 insertion, JUMBF boxes, `c2pa.hash.data` exclusion hashing, the IIRY proof assertion, `c2pa.claim.v2` CBOR bytes, and a detached COSE_Sign1 ES256 C2PA claim signature.
+- The Swift core implements the constrained IIRY JPEG/C2PA profile: JPEG APP11 insertion, JUMBF boxes, `c2pa.hash.data` exclusion hashing, the `cawg.identity` assertion, `c2pa.claim.v2` CBOR bytes, and a detached COSE_Sign1 ES256 C2PA claim signature.
 - The embedded sample ES256 certificate/key is development-only material from `c2patool` / `c2pa-rs`; it can validate mechanics but must never be described as production Content Credentials signing-credential trust.
 - Do not add `/api/c2pa/*` or any service-side `c2patool` execution path. The service is OpenID4VP-only.
-- Treat the `.iiry` carrier as a branded transport envelope unless it contains a locally verified IIRY profile or separately validated C2PA asset.
+- Treat `.iiry` as a protective extension for signed JPEG/C2PA bytes. Do not support detached JSON `.iiry` proof carriers as an interchange format.
 - Keep decrypted wallet presentations private by default. Service serialization must stay default-off behind `IIRY_SERIALIZE_PRESENTATIONS=1`.
 - Keep RP private keys, access certificates, registration certificates, and serialized wallet responses out of Git.
 
@@ -34,7 +34,7 @@ io.github.ndurner.iiry
 Current extension identifiers:
 
 ```text
-io.github.ndurner.iiry.cawg.openid4vp.holder-binding.v1
+io.github.ndurner.iiry.cawg.openid4vp.holder-binding.v2
 io.github.ndurner.iiry.openid4vp-nonce.v2
 io.github.ndurner.iiry.proof-bundle.v1
 io.github.ndurner.iiry.carrier.v1

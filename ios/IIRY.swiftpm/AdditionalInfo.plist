@@ -22,15 +22,15 @@
 	<array>
 		<dict>
 			<key>CFBundleTypeName</key>
-      <string>IIRY Proof</string>
-      <key>CFBundleTypeRole</key>
-      <string>Viewer</string>
-      <key>LSHandlerRank</key>
-      <string>Owner</string>
-      <key>LSItemContentTypes</key>
-      <array>
-        <string>de.ndurner.iiry.proof</string>
-      </array>
+			<string>IIRY Commitment</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>de.ndurner.iiry.c2pa-file</string>
+			</array>
 		</dict>
 		<dict>
 			<key>CFBundleTypeName</key>
@@ -79,27 +79,27 @@
   <string>IIRY saves a verification receipt image when you ask it to keep a record.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>IIRY imports images you select for identity-signal verification and converts them to JPEG when needed.</string>
-  <key>UTExportedTypeDeclarations</key>
-  <array>
-    <dict>
-      <key>UTTypeIdentifier</key>
-      <string>de.ndurner.iiry.proof</string>
-      <key>UTTypeDescription</key>
-      <string>IIRY Proof</string>
-      <key>UTTypeConformsTo</key>
-      <array>
-        <string>public.data</string>
-      </array>
-      <key>UTTypeTagSpecification</key>
-      <dict>
-        <key>public.filename-extension</key>
-        <array>
-          <string>iiry</string>
-        </array>
-        <key>public.mime-type</key>
-        <string>application/vnd.io.github.ndurner.iiry.proof+json</string>
-      </dict>
-    </dict>
-  </array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>de.ndurner.iiry.c2pa-file</string>
+			<key>UTTypeDescription</key>
+			<string>IIRY Commitment</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>iiry</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>application/vnd.io.github.ndurner.iiry.c2pa</string>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>

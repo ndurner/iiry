@@ -16,7 +16,7 @@
   <img alt="iOS 17+" src="https://img.shields.io/badge/iOS-17%2B-111111?logo=apple&logoColor=white">
   <img alt="macOS 15 CLI" src="https://img.shields.io/badge/macOS-15%2B-111111?logo=apple&logoColor=white">
   <a href="https://c2pa.org/"><img alt="C2PA profile" src="https://img.shields.io/badge/C2PA-constrained%20JPEG%20profile-2F855A"></a>
-  <a href="docs/cawg-eudi-extension.md"><img alt="CAWG VC+VP plus IIRY extension" src="https://img.shields.io/badge/CAWG-VC%2BVP%20%2B%20IIRY%20extension-8A5CF6"></a>
+  <a href="docs/cawg-eudi-extension.md"><img alt="CAWG VC+VP plus IIRY extension" src="https://img.shields.io/badge/CAWG%20VC%2BVP%20%2B%20IIRY%20extension-8A5CF6"></a>
   <a href="https://openid.net/specs/openid-4-verifiable-presentations-1_0-final.html"><img alt="OpenID4VP" src="https://img.shields.io/badge/OpenID4VP-holder%20binding-2563EB"></a>
   <img alt="Prototype" src="https://img.shields.io/badge/status-hackathon%20prototype-7C3AED">
 </p>
@@ -41,9 +41,9 @@ IIRY does **not** prove that a WhatsApp account belongs to the wallet holder, th
 
 | Surface | Role |
 | --- | --- |
-| iPhone app | Captures or imports an image, shows the human challenge text, runs the wallet flow, and exports an IIRY carrier. |
-| Shared Swift core | Implements nonce encoding, asset hashing, proof-bundle encoding, carrier parsing, JPEG/C2PA insertion, and validation. |
-| macOS CLI | Verifies IIRY carriers and JPEGs through the same `IIRYCore` implementation used by the app. |
+| iPhone app | Captures or imports an image, shows the human challenge text, runs the wallet flow, and exports a signed C2PA JPEG using the protective `.iiry` extension. |
+| Shared Swift core | Implements nonce encoding, asset hashing, proof-bundle encoding, CAWG identity assertion encoding, JPEG/C2PA insertion, and validation. |
+| macOS CLI | Signs and verifies C2PA JPEGs through the same `IIRYCore` implementation used by the app. |
 | FastAPI service | Drives the OpenID4VP relying-party flow and returns wallet response material to the app. |
 
 ## Parts
@@ -62,13 +62,15 @@ CAWG's draft VC+VP identity assertion currently builds on the W3C standard for W
 IIRY therefore uses an extension signature type:
 
 ```text
-io.github.ndurner.iiry.cawg.openid4vp.holder-binding.v1
+io.github.ndurner.iiry.cawg.openid4vp.holder-binding.v2
 ```
+
+The C2PA JPEG carries a literal `cawg.identity` assertion. Its `signer_payload.sig_type` is the IIRY namespace above, `signer_payload.referenced_assertions` includes the actual `c2pa.hash.data` hard-binding assertion, and its custom `signature` byte string carries canonical OpenID4VP evidence for the holder-bound wallet presentation.
 
 The extension keeps the CAWG idea of an identity assertion that references the C2PA hard-binding assertion, but the holder proof is validated through OpenID4VP semantics:
 
 1. Verify the C2PA manifest and hard binding for the JPEG.
-2. Read the IIRY/CAWG OpenID4VP assertion.
+2. Read the `cawg.identity` assertion with the IIRY OpenID4VP signature type.
 3. Decode the OpenID4VP nonce payload.
 4. Verify that the nonce contains both a digest of the C2PA asset-binding material and a fresh random nonce.
 5. Verify the Wallet presentation holder binding over the same nonce.
@@ -100,17 +102,17 @@ is intentionally **not** part of this nonce payload. It must be visible in the i
 
 ## File Naming
 
-The app exports a branded transport file:
+The app exports a signed C2PA JPEG with a protective `.iiry` extension:
 
 ```text
 IIRY-Commitment-YYYY-MM-DD-ABCD1234.jpg.c2pa.cawg.iiry
 ```
 
-`Commitment` is deliberate: the file contains a cryptographic commitment and evidence, not a blanket confirmation that the content is true. The `.jpg` segment keeps the ordinary image nature visible, `.c2pa.cawg` makes the technical choices visible during a no-slides demo, and the final `.iiry` extension lets iOS route the file back into IIRY. Dots are safer than `+` for document-type routing and share-sheet handling.
+`Commitment` is deliberate: the file contains a cryptographic commitment and evidence, not a blanket confirmation that the content is true. The `.jpg` segment keeps the ordinary image nature visible, `.c2pa.cawg` makes the technical choices visible during a no-slides demo, and the final `.iiry` extension discourages messenger pipelines from treating the file as an ordinary JPEG and stripping C2PA metadata. Detached JSON `.iiry` proof carriers are not an interchange format.
 
 ## C2PA Status
 
-The shared Swift core now implements a constrained **IIRY JPEG/C2PA profile**. It writes and reads JPEG APP11 C2PA/JUMBF segments, creates a `c2pa.hash.data` hard-binding assertion with exclusion ranges, stores the IIRY proof-bundle assertion, writes a CBOR `c2pa.claim.v2`, and signs that claim as a detached COSE_Sign1 ES256 C2PA claim signature. The iPhone app and CLI use this same implementation.
+The shared Swift core now implements a constrained **IIRY JPEG/C2PA profile**. It writes and reads JPEG APP11 C2PA/JUMBF segments, creates a `c2pa.hash.data` hard-binding assertion with exclusion ranges, embeds a CBOR `cawg.identity` assertion for the IIRY OpenID4VP signature type, writes a CBOR `c2pa.claim.v2`, and signs that claim as a detached COSE_Sign1 ES256 C2PA claim signature. The iPhone app and CLI use this same implementation.
 
 For hackathon development the Swift core uses the same sample ES256 certificate/key material bundled with `c2patool` / `c2pa-rs`. That lets local reference tooling validate the C2PA mechanics, but it does **not** establish production signing-credential trust and must not be presented as a trusted Content Credential signer.
 
@@ -121,7 +123,7 @@ The CLI supports two verification modes for C2PA-bearing JPEGs:
 - `iiry verify <image.jpg> --both` runs both and exposes disagreement.
 - `iiry verify <image.jpg> --c2patool --trust-c2pa-sample` repeats the reference check while explicitly trusting the C2PA ES256 sample root anchor for local development only.
 
-For IIRY-generated JPEGs, the expected default `c2patool` development result is that `assertion.dataHash.match`, `assertion.hashedURI.match`, and `claimSignature.validated` pass, while `signingCredential.untrusted` fails. With `--trust-c2pa-sample`, the C2PA layer should report `validation_state: Trusted`; this is still sample trust, not production trust. Separately, generic C2PA tooling will not understand IIRY's proposed CAWG/OpenID4VP proof-bundle semantics until that extension is standardized or explicitly supported.
+For IIRY-generated JPEGs, the expected default `c2patool` development result is that `assertion.dataHash.match`, `assertion.hashedURI.match`, and `claimSignature.validated` pass, while `signingCredential.untrusted` fails. With `--trust-c2pa-sample`, the C2PA layer should report `validation_state: Trusted`; this is still sample trust, not production trust. Separately, generic C2PA tooling can see the `cawg.identity` assertion but will not understand IIRY's OpenID4VP holder-binding semantics until that extension is standardized or explicitly supported.
 
 The web service does not execute `c2patool` and does not receive JPEG bytes for C2PA processing. It only drives the OpenID4VP relying-party flow and returns the Wallet response material to the app.
 

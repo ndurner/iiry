@@ -19,7 +19,6 @@
 		453FE6845851ED3D2879D394 /* Nonce.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23C63D42E7EB1CB9B810D016 /* Nonce.swift */; };
 		5978CD647F4A8A78D308C553 /* JSONCoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DBCC645CACE9B6DFF4EE8B9 /* JSONCoding.swift */; };
 		63C7D9CBEB895C12D0517274 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 74DD9888BA9D0982DC4E83B3 /* Foundation.framework */; };
-		72D767186DB55C74E318FB97 /* C2PAManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34A83A7DFE0DDB620C5FE0F5 /* C2PAManifest.swift */; };
 		75F36207897E50BE4F49BF0B /* IIRYConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = D216F1E00C991D6FB16729BB /* IIRYConstants.swift */; };
 		8FD2FBB3160BFBB0E3A74F74 /* IIRYShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 551D2B28BD95E5C9CC56B20D /* IIRYShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		98E761B9B551EDB54EF808D8 /* PresentationExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7F711B9223BAB47B16F1DA /* PresentationExtractor.swift */; };
@@ -93,7 +92,6 @@
 		292FC5BA35A63793E6CBE4D9 /* Errors.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Errors.swift; path = IIRY.swiftpm/Sources/IIRYCore/Errors.swift; sourceTree = "<group>"; };
 		2DBCC645CACE9B6DFF4EE8B9 /* JSONCoding.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = JSONCoding.swift; path = IIRY.swiftpm/Sources/IIRYCore/JSONCoding.swift; sourceTree = "<group>"; };
 		2F2F4F790B1C4A5D9E8F7012 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = IIRY.swiftpm/Sources/AppModule/Resources/Assets.xcassets; sourceTree = "<group>"; };
-		34A83A7DFE0DDB620C5FE0F5 /* C2PAManifest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = C2PAManifest.swift; path = IIRY.swiftpm/Sources/IIRYCore/C2PAManifest.swift; sourceTree = "<group>"; };
 		52B8DFAFD7A3F344226FE573 /* App.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = App.swift; path = IIRY.swiftpm/Sources/AppModule/App.swift; sourceTree = "<group>"; };
 		52E449C7AD2B2259AD1836EB /* ProofBuilder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProofBuilder.swift; path = IIRY.swiftpm/Sources/IIRYCore/ProofBuilder.swift; sourceTree = "<group>"; };
 		551D2B28BD95E5C9CC56B20D /* IIRYShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = IIRYShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -197,7 +195,6 @@
 				0B469C60444566CB47A6E9F2 /* Base64URL.swift */,
 				C2D7B5309D57F832EA9D9996 /* C2PAAsset.swift */,
 				C614BD0A5EE2C4F69F4DBA05 /* C2PAInspection.swift */,
-				34A83A7DFE0DDB620C5FE0F5 /* C2PAManifest.swift */,
 				A2586BDFFEE7CD0AD8E3604F /* CBOR.swift */,
 				292FC5BA35A63793E6CBE4D9 /* Errors.swift */,
 				C571CED3156D08AB4AD5E92F /* Hashing.swift */,
@@ -371,7 +368,6 @@
 				1739121C9F2EE57F923D6687 /* Base64URL.swift in Sources */,
 				184D65ED2EC72B8E558ADC1D /* C2PAAsset.swift in Sources */,
 				BA6009BA5DA831CA1A3D70D3 /* C2PAInspection.swift in Sources */,
-				72D767186DB55C74E318FB97 /* C2PAManifest.swift in Sources */,
 				12FCC2572C4F47CEDD616B6A /* CBOR.swift in Sources */,
 				F94BE31FE3FACFF576D8BBDE /* Errors.swift in Sources */,
 				DDE59DAF33CDC5EE86AD3282 /* Hashing.swift in Sources */,

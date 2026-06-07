@@ -17,7 +17,7 @@ public enum IIRYError: Error, LocalizedError, Equatable {
         case .invalidNonce(let detail):
             return "Invalid IIRY nonce: \(detail)"
         case .invalidCarrier(let detail):
-            return "Invalid IIRY carrier: \(detail)"
+            return "Invalid IIRY data: \(detail)"
         case .invalidJWT(let detail):
             return "Invalid JWT: \(detail)"
         case .commandFailed(let detail):

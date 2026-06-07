@@ -28,7 +28,7 @@ struct IIRYApp: App {
 }
 
 extension UTType {
-    static let iiryProof = UTType(exportedAs: IIRYConstants.carrierUTType)
+    static let iiryC2PAFile = UTType(exportedAs: IIRYConstants.carrierUTType)
 }
 
 @Observable
@@ -52,6 +52,7 @@ final class IIRYAppModel {
     var showsImporter = false
     var showsSettings = false
     var shareItem: IIRYShareItem?
+    var signedCommitmentURL: URL?
     var imagePreparationSource: ImagePreparationSource?
     var commitmentDisplayMode: CommitmentDisplayMode = .draft
 
@@ -83,15 +84,10 @@ final class IIRYAppModel {
         do {
             let data = try Data(contentsOf: url)
             if url.pathExtension.lowercased() == IIRYConstants.carrierExtension {
-                do {
-                    let importedCarrier = try IIRYProofBuilder.decodeCarrier(data)
-                    carrier = importedCarrier
-                    selectedImage = UIImage(data: try Base64URL.decode(importedCarrier.imageB64URL))
-                    verificationReport = try IIRYVerifier.verifyCarrier(importedCarrier)
-                    commitmentDisplayMode = .receivedVerification
-                    statusMessage = "Proof opened"
-                } catch {
+                if data.starts(with: [0xff, 0xd8]) {
                     try importC2PAJPEG(data, fileName: url.lastPathComponent)
+                } else {
+                    throw IIRYError.invalidCarrier("Detached .iiry carriers are no longer supported. Open the signed C2PA JPEG instead.")
                 }
             } else {
                 try prepareImage(data, source: .file)
@@ -143,18 +139,12 @@ final class IIRYAppModel {
         statusMessage = "Endpoint reset"
     }
 
-    func shareCarrier() {
-        guard let carrier else {
-            errorMessage = "No IIRY proof is ready."
+    func shareCommitment() {
+        guard let signedCommitmentURL else {
+            errorMessage = "No signed C2PA JPEG is ready. Complete the wallet commitment first."
             return
         }
-        do {
-            let data = try IIRYProofBuilder.carrierData(carrier)
-            let url = try writeTempData(data, fileName: carrier.suggestedFileName)
-            shareItem = IIRYShareItem(activityItems: [url])
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        shareItem = IIRYShareItem(activityItems: [IIRYCommitmentActivityItem(fileURL: signedCommitmentURL)])
     }
 
     func startWalletFlow() async {
@@ -299,13 +289,17 @@ final class IIRYAppModel {
             )
             self.carrier = updated
             self.selectedImage = UIImage(data: try Base64URL.decode(updated.imageB64URL))
-            self.verificationReport = try IIRYVerifier.verifyCarrier(updated)
+            self.verificationReport = nil
+            self.signedCommitmentURL = nil
             self.commitmentDisplayMode = .createdCommitment
-            self.statusMessage = "Commitment ready"
+            self.statusMessage = "Wallet response received; signing C2PA JPEG"
             do {
                 let signed = try IIRYC2PAAssetProcessor.signJPEG(carrier: updated)
                 self.verificationReport = try IIRYC2PAAssetProcessor.verifyJPEG(signed.jpegData)
-                _ = try writeTempData(signed.jpegData, fileName: updated.suggestedFileName)
+                self.signedCommitmentURL = try writeTempData(
+                    signed.jpegData,
+                    fileName: IIRYFileNames.c2paTransportFileName(from: updated.suggestedFileName)
+                )
                 self.statusMessage = "Commitment ready to share"
             } catch {
                 self.errorMessage = "C2PA signing unavailable: \(error.localizedDescription)"
@@ -380,15 +374,11 @@ final class IIRYAppModel {
     }
 
     private func importC2PAJPEG(_ data: Data, fileName: String) throws {
-        let manifestReport = try IIRYC2PAAssetProcessor.readManifestReport(fromJPEGData: data)
-        let proof = try IIRYC2PAInspectionVerifier.extractProofBundle(fromDetailedJSON: manifestReport)
         let report = try IIRYC2PAAssetProcessor.verifyJPEG(data)
-        let visualData = try IIRYC2PAAssetProcessor.visualJPEGData(from: data)
-        carrier = IIRYCarrier(
-            suggestedFileName: fileName,
-            imageB64URL: Base64URL.encode(visualData),
-            proof: proof
-        )
+        let importedCarrier = try IIRYC2PAAssetProcessor.carrier(fromJPEGData: data, suggestedFileName: fileName)
+        let visualData = try Base64URL.decode(importedCarrier.imageB64URL)
+        carrier = importedCarrier
+        signedCommitmentURL = nil
         selectedImage = UIImage(data: visualData)
         verificationReport = report
         pendingSession = nil
@@ -401,6 +391,7 @@ final class IIRYAppModel {
         let jpegData = try normalizedJPEGData(from: data)
         let prepared = try IIRYProofBuilder.prepare(imageData: jpegData)
         carrier = prepared.carrier
+        signedCommitmentURL = nil
         selectedImage = UIImage(data: jpegData)
         verificationReport = nil
         pendingSession = nil
@@ -565,7 +556,7 @@ struct IIRYRootView: View {
         }
         .fileImporter(
             isPresented: $model.showsImporter,
-            allowedContentTypes: [.image, .iiryProof],
+            allowedContentTypes: [.image, .iiryC2PAFile],
             allowsMultipleSelection: false
         ) { result in
             Task {
@@ -597,30 +588,31 @@ struct ActiveProofView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let hasProof = model.verificationReport != nil
+            let hasReport = model.verificationReport != nil
+            let hasProof = model.verificationReport?.overallPassed == true
             let isReceivedVerification = model.commitmentDisplayMode == .receivedVerification
 
             VStack(alignment: .leading, spacing: 12) {
                 CompactHeader(
-                    title: hasProof ? "Verification" : "Commitment",
-                    detail: hasProof ? (isReceivedVerification ? "Received commitment" : "Ready to share") : "Review the image"
+                    title: hasReport ? "Verification" : "Commitment",
+                    detail: hasProof ? (isReceivedVerification ? "Received commitment" : "Ready to share") : (hasReport ? "Verification failed" : "Review the image")
                 ) {
                     model.showsSettings = true
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(alignment: .center, spacing: 10) {
-                        Image(systemName: hasProof ? "checkmark.seal.fill" : "scope")
-                            .foregroundStyle(hasProof ? IIRYPalette.green : IIRYPalette.plum)
+                        Image(systemName: hasProof ? "checkmark.seal.fill" : (hasReport ? "xmark.seal.fill" : "scope"))
+                            .foregroundStyle(hasProof ? IIRYPalette.green : (hasReport ? IIRYPalette.rust : IIRYPalette.plum))
                             .frame(width: 24)
-                        Text(statusHeadline(hasProof: hasProof, mode: model.commitmentDisplayMode))
+                        Text(statusHeadline(hasReport: hasReport, hasProof: hasProof, mode: model.commitmentDisplayMode))
                             .font(.system(size: 15, weight: .bold, design: .rounded))
                             .foregroundStyle(IIRYPalette.ink)
                             .lineLimit(2)
                             .minimumScaleFactor(0.82)
                     }
 
-                    if hasProof {
+                    if hasReport {
                         IdentityBanner(name: carrier.proof.committedPersonNameDisclosureComplete ? carrier.proof.committedPersonName : nil)
                     }
 
@@ -628,7 +620,7 @@ struct ActiveProofView: View {
                         .resizable()
                         .scaledToFit()
                         .frame(maxWidth: .infinity)
-                        .frame(maxHeight: hasProof ? geometry.size.height * 0.44 : geometry.size.height * 0.58)
+                        .frame(maxHeight: hasReport ? geometry.size.height * 0.44 : geometry.size.height * 0.58)
                         .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(IIRYPalette.line, lineWidth: 1))
@@ -691,9 +683,12 @@ struct ActiveProofView: View {
         }
     }
 
-    private func statusHeadline(hasProof: Bool, mode: CommitmentDisplayMode) -> String {
-        guard hasProof else {
+    private func statusHeadline(hasReport: Bool, hasProof: Bool, mode: CommitmentDisplayMode) -> String {
+        guard hasReport else {
             return "Confirm the challenge is visible in the image."
+        }
+        guard hasProof else {
+            return "This commitment does not meet the current verification profile."
         }
         switch mode {
         case .receivedVerification:
@@ -778,7 +773,7 @@ struct ActionRow: View {
             if hasProof {
                 if model.commitmentDisplayMode != .receivedVerification {
                     Button {
-                        model.shareCarrier()
+                        model.shareCommitment()
                     } label: {
                         Label("Share commitment", systemImage: "square.and.arrow.up")
                     }
@@ -1339,10 +1334,10 @@ struct VerificationPanel: View {
     let image: UIImage
 
     var body: some View {
-        let hasProof = model.verificationReport != nil
+        let hasProof = model.verificationReport?.overallPassed == true
 
         VStack(alignment: .leading, spacing: 14) {
-            SectionTitle(title: hasProof ? "Verification" : "Commitment", detail: carrier.suggestedFileName)
+            SectionTitle(title: model.verificationReport == nil ? "Commitment" : (hasProof ? "Verification" : "Verification failed"), detail: carrier.suggestedFileName)
 
             Image(uiImage: image)
                 .resizable()
@@ -1371,7 +1366,7 @@ struct VerificationPanel: View {
 
                 if hasProof {
                     Button {
-                        model.shareCarrier()
+                        model.shareCommitment()
                     } label: {
                         Image(systemName: "square.and.arrow.up")
                             .frame(width: 44, height: 44)
@@ -1637,4 +1632,38 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+final class IIRYCommitmentActivityItem: NSObject, UIActivityItemSource {
+    let fileURL: URL
+
+    init(fileURL: URL) {
+        self.fileURL = fileURL
+        super.init()
+    }
+
+    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
+        fileURL
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        itemForActivityType activityType: UIActivity.ActivityType?
+    ) -> Any? {
+        fileURL
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        dataTypeIdentifierForActivityType activityType: UIActivity.ActivityType?
+    ) -> String {
+        IIRYConstants.carrierUTType
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        subjectForActivityType activityType: UIActivity.ActivityType?
+    ) -> String {
+        fileURL.lastPathComponent
+    }
 }

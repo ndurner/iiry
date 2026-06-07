@@ -8,6 +8,20 @@ import Testing
     #expect(text == "Is it really you?\n(26-06-02 ABC123XY)")
 }
 
+@Test func c2paJPEGFileNameEndsInJPEGExtension() throws {
+    let fileName = IIRYFileNames.c2paJPEGFileName(
+        from: "IIRY-Commitment-2026-06-07-ABCDEFGH.jpg.c2pa.cawg.iiry"
+    )
+    #expect(fileName == "IIRY-Commitment-2026-06-07-ABCDEFGH.jpg.c2pa.cawg.jpg")
+}
+
+@Test func c2paTransportFileNameKeepsProtectiveExtension() throws {
+    let fileName = IIRYFileNames.c2paTransportFileName(
+        from: "IIRY-Commitment-2026-06-07-ABCDEFGH.jpg.c2pa.cawg.iiry"
+    )
+    #expect(fileName == "IIRY-Commitment-2026-06-07-ABCDEFGH.jpg.c2pa.cawg.iiry")
+}
+
 @Test func preparedProofCarriesDecodableNonce() throws {
     let image = Data([0xff, 0xd8, 0xff, 0xd9])
     let random = Data(repeating: 0x42, count: 32)
@@ -92,7 +106,11 @@ import Testing
     #expect(report.checks.first { $0.id == "c2pa_data_hash" }?.passed == true)
     #expect(report.checks.first { $0.id == "c2pa_claim_signature" }?.passed == true)
     #expect(report.checks.first { $0.id == "iiry_claim_assertion_hashes" }?.passed == true)
-    #expect(report.checks.first { $0.id == "asset_hash" }?.passed == true)
+    #expect(report.checks.first { $0.id == "cawg_identity_assertion" }?.passed == true)
+    #expect(report.checks.first { $0.id == "cawg_identity_sig_type" }?.passed == true)
+    #expect(report.checks.first { $0.id == "cawg_identity_hard_binding_reference" }?.passed == true)
+    #expect(report.checks.first { $0.id == "cawg_identity_evidence" }?.passed == true)
+    #expect(report.checks.first { $0.id == "nonce_asset_binding" }?.passed == true)
 }
 
 @Test func c2paProfileDetectsVisualByteReplay() throws {
@@ -105,7 +123,7 @@ import Testing
     let report = try IIRYC2PAAssetProcessor.verifyJPEG(tampered)
 
     #expect(report.checks.first { $0.id == "c2pa_data_hash" }?.passed == false)
-    #expect(report.checks.first { $0.id == "asset_hash" }?.passed == false)
+    #expect(report.checks.first { $0.id == "nonce_asset_binding" }?.passed == false)
 }
 
 @Test func c2paProfileDetectsSignatureTampering() throws {
@@ -121,6 +139,32 @@ import Testing
 
     let report = try IIRYC2PAAssetProcessor.verifyJPEG(tampered)
     #expect(report.checks.first { $0.id == "c2pa_claim_signature" }?.passed == false)
+}
+
+@Test func c2paProfileRejectsPresentationThatDoesNotMatchWalletResponse() throws {
+    var carrier = try preparedCarrierWithPresentation(image: Data([0xff, 0xd8, 0xff, 0xd9]))
+    carrier.proof.openID4VP.compactPresentation = fakePresentation(nonce: carrier.proof.openID4VP.nonce) + ".tampered"
+
+    #expect(throws: IIRYError.self) {
+        try IIRYC2PAAssetProcessor.signJPEG(carrier: carrier)
+    }
+}
+
+@Test func c2paProfileRejectsLegacyCAWGOpenID4VPSigType() throws {
+    let carrier = try preparedCarrierWithPresentation(image: Data([0xff, 0xd8, 0xff, 0xd9]))
+    let signed = try IIRYC2PAAssetProcessor.signJPEG(carrier: carrier)
+    var legacy = signed.jpegData
+    let current = Data(IIRYConstants.cawgOpenID4VPSigType.utf8)
+    let legacyType = Data(IIRYConstants.legacyCAWGOpenID4VPSigTypeV1.utf8)
+    #expect(current.count == legacyType.count)
+    guard let range = legacy.range(of: current) else {
+        throw IIRYError.commandFailed("CAWG OpenID4VP sig_type not found in generated JPEG")
+    }
+    legacy.replaceSubrange(range, with: legacyType)
+
+    #expect(throws: IIRYError.self) {
+        try IIRYC2PAAssetProcessor.verifyJPEG(legacy)
+    }
 }
 
 private func preparedCarrierWithPresentation(image: Data) throws -> IIRYCarrier {

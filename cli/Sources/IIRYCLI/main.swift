@@ -20,16 +20,10 @@ struct IIRYCLI {
         switch command {
         case "request-text":
             print(try IIRYRequestText.make())
-        case "prepare":
-            try commandPrepare(args)
-        case "attach-vp":
-            try commandAttachVP(args)
+        case "sign":
+            try commandSign(args)
         case "verify":
             try commandVerify(args)
-        case "extract-image":
-            try commandExtractImage(args)
-        case "c2pa-embed":
-            try commandC2PAEmbed(args)
         case "-h", "--help", "help":
             printHelp()
         default:
@@ -37,54 +31,37 @@ struct IIRYCLI {
         }
     }
 
-    static func commandPrepare(_ args: [String]) throws {
+    static func commandSign(_ args: [String]) throws {
         guard let input = args.first else {
-            throw IIRYError.commandFailed("prepare needs an input JPEG path")
+            throw IIRYError.commandFailed("sign needs an input JPEG path")
+        }
+        guard let presentationPath = option("--presentation-json", in: args) else {
+            throw IIRYError.commandFailed("sign needs --presentation-json")
         }
         let output = option("--out", in: args).map(URL.init(fileURLWithPath:))
         let imageURL = URL(fileURLWithPath: input)
         let imageData = try Data(contentsOf: imageURL)
         let prepared = try IIRYProofBuilder.prepare(imageData: imageData)
-        let outURL = output ?? imageURL.deletingLastPathComponent().appendingPathComponent(prepared.carrier.suggestedFileName)
-        try IIRYProofBuilder.carrierData(prepared.carrier).write(to: outURL)
-
-        print("carrier: \(outURL.path)")
-        print("nonce: \(prepared.nonce)")
-        print("suggested_file_name: \(prepared.carrier.suggestedFileName)")
-    }
-
-    static func commandAttachVP(_ args: [String]) throws {
-        guard let carrierPath = args.first else {
-            throw IIRYError.commandFailed("attach-vp needs an IIRY carrier path")
-        }
-        guard let presentationPath = option("--presentation-json", in: args) else {
-            throw IIRYError.commandFailed("attach-vp needs --presentation-json")
-        }
-        let output = option("--out", in: args).map(URL.init(fileURLWithPath:))
-        let carrierURL = URL(fileURLWithPath: carrierPath)
-        let carrier = try IIRYProofBuilder.decodeCarrier(try Data(contentsOf: carrierURL))
         let responseData = try Data(contentsOf: URL(fileURLWithPath: presentationPath))
-        let updated = try IIRYProofBuilder.attachPresentation(carrier: carrier, decodedResponseJSON: responseData)
-        let outURL = output ?? carrierURL
-        try IIRYProofBuilder.carrierData(updated).write(to: outURL)
-        let report = try IIRYVerifier.verifyCarrier(updated)
+        let updated = try IIRYProofBuilder.attachPresentation(carrier: prepared.carrier, decodedResponseJSON: responseData)
+        let signed = try IIRYC2PAAssetProcessor.signJPEG(carrier: updated)
+        let outURL = output ?? imageURL
+            .deletingLastPathComponent()
+            .appendingPathComponent(IIRYFileNames.c2paTransportFileName(from: updated.suggestedFileName))
+        try signed.jpegData.write(to: outURL)
+        let report = try IIRYC2PAAssetProcessor.verifyJPEG(signed.jpegData)
+        print("c2pa_transport: \(outURL.path)")
+        print("nonce: \(prepared.nonce)")
         printReport(report)
     }
 
     static func commandVerify(_ args: [String]) throws {
         guard let inputPath = args.first else {
-            throw IIRYError.commandFailed("verify needs an IIRY carrier or C2PA JPEG path")
+            throw IIRYError.commandFailed("verify needs a C2PA JPEG path")
         }
         let mode = verificationMode(args)
         let inputURL = URL(fileURLWithPath: inputPath)
         let data = try Data(contentsOf: inputURL)
-
-        if let carrier = try? IIRYProofBuilder.decodeCarrier(data) {
-            let report = try IIRYVerifier.verifyCarrier(carrier)
-            print("app_style_verification:")
-            printReport(report)
-            Foundation.exit(report.overallPassed ? 0 : 1)
-        }
 
         var overall = true
         if mode == .own || mode == .both {
@@ -120,34 +97,6 @@ struct IIRYCLI {
             }
         }
         Foundation.exit(overall ? 0 : 1)
-    }
-
-    static func commandExtractImage(_ args: [String]) throws {
-        guard let carrierPath = args.first else {
-            throw IIRYError.commandFailed("extract-image needs an IIRY carrier path")
-        }
-        guard let outputPath = option("--out", in: args) else {
-            throw IIRYError.commandFailed("extract-image needs --out")
-        }
-        let carrier = try IIRYProofBuilder.decodeCarrier(try Data(contentsOf: URL(fileURLWithPath: carrierPath)))
-        let imageData = try Base64URL.decode(carrier.imageB64URL)
-        try imageData.write(to: URL(fileURLWithPath: outputPath))
-        print("image: \(outputPath)")
-    }
-
-    static func commandC2PAEmbed(_ args: [String]) throws {
-        guard let carrierPath = args.first else {
-            throw IIRYError.commandFailed("c2pa-embed needs an IIRY carrier path")
-        }
-        guard let outputPath = option("--out", in: args) else {
-            throw IIRYError.commandFailed("c2pa-embed needs --out")
-        }
-        let carrier = try IIRYProofBuilder.decodeCarrier(try Data(contentsOf: URL(fileURLWithPath: carrierPath)))
-        let signed = try IIRYC2PAAssetProcessor.signJPEG(carrier: carrier)
-        try signed.jpegData.write(to: URL(fileURLWithPath: outputPath))
-        let report = try IIRYC2PAAssetProcessor.verifyJPEG(signed.jpegData)
-        print("c2pa_jpeg: \(outputPath)")
-        printReport(report)
     }
 
     static func printReport(_ report: IIRYVerificationReport) {
@@ -282,11 +231,8 @@ struct IIRYCLI {
         print("""
         Usage:
           iiry request-text
-          iiry prepare <image.jpg> [--out <proof.iiry>]
-          iiry attach-vp <proof.iiry> --presentation-json <decoded-response.json> [--out <proof.iiry>]
-          iiry verify <proof.iiry|c2pa-image.jpg> [--own|--c2patool|--both] [--trust-c2pa-sample]
-          iiry extract-image <proof.iiry> --out <image.jpg>
-          iiry c2pa-embed <proof.iiry> --out <image.jpg>
+          iiry sign <image.jpg> --presentation-json <decoded-response.json> [--out <c2pa-image.iiry>]
+          iiry verify <c2pa-image.iiry|c2pa-image.jpg> [--own|--c2patool|--both] [--trust-c2pa-sample]
         """)
     }
 }
