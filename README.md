@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Is It Really You?</strong><br>
-  A hackathon prototype for binding a German EUDI Wallet holder presentation to a JPEG.
+  A [hackathon](https://bmi.usercontent.opencode.de/eudi-wallet/developer-guide/hackathon/) prototype for binding a German EUDI Wallet holder presentation to a JPEG.
 </p>
 
 <p align="center">
