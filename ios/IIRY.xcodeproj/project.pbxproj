@@ -23,6 +23,8 @@
 		8FD2FBB3160BFBB0E3A74F74 /* IIRYShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 551D2B28BD95E5C9CC56B20D /* IIRYShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		98E761B9B551EDB54EF808D8 /* PresentationExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7F711B9223BAB47B16F1DA /* PresentationExtractor.swift */; };
 		A0D5911691A301554DBA63B6 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B8DFAFD7A3F344226FE573 /* App.swift */; };
+		A4F782A52A9B4B2EBB57C08E /* WalletPresentationVerifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4F782A42A9B4B2EBB57C08E /* WalletPresentationVerifier.swift */; };
+		A4F782A72A9B4B2EBB57C08E /* VerifierPolicy.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4F782A62A9B4B2EBB57C08E /* VerifierPolicy.generated.swift */; };
 		B69A41C3619F558321268A33 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 74DD9888BA9D0982DC4E83B3 /* Foundation.framework */; };
 		BA6009BA5DA831CA1A3D70D3 /* C2PAInspection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C614BD0A5EE2C4F69F4DBA05 /* C2PAInspection.swift */; };
 		DDE59DAF33CDC5EE86AD3282 /* Hashing.swift in Sources */ = {isa = PBXBuildFile; fileRef = C571CED3156D08AB4AD5E92F /* Hashing.swift */; };
@@ -101,6 +103,8 @@
 		9BAE8996F9C8A948A8D53B10 /* Models.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Models.swift; path = IIRY.swiftpm/Sources/IIRYCore/Models.swift; sourceTree = "<group>"; };
 		9F701E9166E84B9DA6605A19 /* IIRY.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = IIRY.entitlements; sourceTree = "<group>"; };
 		A2586BDFFEE7CD0AD8E3604F /* CBOR.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CBOR.swift; path = IIRY.swiftpm/Sources/IIRYCore/CBOR.swift; sourceTree = "<group>"; };
+		A4F782A42A9B4B2EBB57C08E /* WalletPresentationVerifier.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WalletPresentationVerifier.swift; path = IIRY.swiftpm/Sources/IIRYCore/WalletPresentationVerifier.swift; sourceTree = "<group>"; };
+		A4F782A62A9B4B2EBB57C08E /* VerifierPolicy.generated.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = VerifierPolicy.generated.swift; path = IIRY.swiftpm/Sources/IIRYCore/VerifierPolicy.generated.swift; sourceTree = "<group>"; };
 		B282773EF98611D22F0CFE6F /* IIRYCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = IIRYCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		C2D7B5309D57F832EA9D9996 /* C2PAAsset.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = C2PAAsset.swift; path = IIRY.swiftpm/Sources/IIRYCore/C2PAAsset.swift; sourceTree = "<group>"; };
 		C571CED3156D08AB4AD5E92F /* Hashing.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Hashing.swift; path = IIRY.swiftpm/Sources/IIRYCore/Hashing.swift; sourceTree = "<group>"; };
@@ -203,6 +207,8 @@
 				FF7F711B9223BAB47B16F1DA /* PresentationExtractor.swift */,
 				52E449C7AD2B2259AD1836EB /* ProofBuilder.swift */,
 				878DB033BF7AAE0FFC97364D /* RequestText.swift */,
+				A4F782A62A9B4B2EBB57C08E /* VerifierPolicy.generated.swift */,
+				A4F782A42A9B4B2EBB57C08E /* WalletPresentationVerifier.swift */,
 			);
 			name = IIRYCore;
 			sourceTree = "<group>";
@@ -233,6 +239,7 @@
 			buildConfigurationList = 53A4DD7715093F85111DFD22 /* Build configuration list for PBXNativeTarget "IIRYCore" */;
 			buildPhases = (
 				63E941F8126F9E38D8007072 /* Headers */,
+				A4F782A82A9B4B2EBB57C08E /* Generate Verifier Policy */,
 				970DA291C42056811DC6F6E9 /* Sources */,
 				755CB2647D8A21A41003062B /* Frameworks */,
 				1F671E4A1835F45FFF4C7A23 /* Resources */,
@@ -341,6 +348,26 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		A4F782A82A9B4B2EBB57C08E /* Generate Verifier Policy */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(PROJECT_DIR)/../service/secrets/access-certificate.pem",
+				"$(PROJECT_DIR)/../scripts/generate-verifier-policy.py",
+			);
+			name = "Generate Verifier Policy";
+			outputPaths = (
+				"$(PROJECT_DIR)/IIRY.swiftpm/Sources/IIRYCore/VerifierPolicy.generated.swift",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$PROJECT_DIR/../scripts/generate-verifier-policy.py\" --access-cert \"$PROJECT_DIR/../service/secrets/access-certificate.pem\" --out \"$PROJECT_DIR/IIRY.swiftpm/Sources/IIRYCore/VerifierPolicy.generated.swift\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		1FD7D49411943317A64810E3 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -375,6 +402,8 @@
 				98E761B9B551EDB54EF808D8 /* PresentationExtractor.swift in Sources */,
 				DF24A14746F52DB71A80CDA1 /* ProofBuilder.swift in Sources */,
 				40298C77771F6D9C5767ADC8 /* RequestText.swift in Sources */,
+				A4F782A72A9B4B2EBB57C08E /* VerifierPolicy.generated.swift in Sources */,
+				A4F782A52A9B4B2EBB57C08E /* WalletPresentationVerifier.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

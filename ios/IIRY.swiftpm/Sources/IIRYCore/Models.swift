@@ -82,6 +82,7 @@ public struct WalletVerificationSummary: Codable, Equatable {
     public var nonceMatchesChallenge: Bool?
     public var audienceIsThisVerifier: Bool?
     public var sdHashBindsPresentation: Bool?
+    public var audience: String?
     public var error: String?
 
     public init(
@@ -92,6 +93,7 @@ public struct WalletVerificationSummary: Codable, Equatable {
         nonceMatchesChallenge: Bool? = nil,
         audienceIsThisVerifier: Bool? = nil,
         sdHashBindsPresentation: Bool? = nil,
+        audience: String? = nil,
         error: String? = nil
     ) {
         self.issuerSignature = issuerSignature
@@ -101,6 +103,7 @@ public struct WalletVerificationSummary: Codable, Equatable {
         self.nonceMatchesChallenge = nonceMatchesChallenge
         self.audienceIsThisVerifier = audienceIsThisVerifier
         self.sdHashBindsPresentation = sdHashBindsPresentation
+        self.audience = audience
         self.error = error
     }
 

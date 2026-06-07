@@ -51,7 +51,10 @@ public enum IIRYC2PAAssetProcessor {
         return try IIRYC2PAProfileReport.data(profile: profile, validation: validation, pretty: true)
     }
 
-    public static func verifyJPEG(_ imageData: Data) throws -> IIRYVerificationReport {
+    public static func verifyJPEG(
+        _ imageData: Data,
+        walletPolicy: IIRYWalletVerificationPolicy = IIRYWalletVerificationPolicy()
+    ) throws -> IIRYVerificationReport {
         let profile = try IIRYC2PAProfileStore.read(fromJPEG: imageData)
         let validation = try validate(profile: profile, imageData: imageData)
         let visualJPEG = try IIRYJPEGC2PA.stripC2PASegments(fromJPEG: imageData)
@@ -93,7 +96,8 @@ public enum IIRYC2PAAssetProcessor {
             checks.append(contentsOf: try cawgIdentityChecks(
                 identity: identity,
                 profile: profile,
-                materialDigest: materialDigest
+                materialDigest: materialDigest,
+                walletPolicy: walletPolicy
             ))
         }
 
@@ -155,7 +159,8 @@ public enum IIRYC2PAAssetProcessor {
     private static func cawgIdentityChecks(
         identity: IIRYCAWGIdentityAssertion,
         profile: IIRYC2PAParsedProfile,
-        materialDigest: Data
+        materialDigest: Data,
+        walletPolicy: IIRYWalletVerificationPolicy
     ) throws -> [IIRYVerificationCheck] {
         let hardBindingReference = profile.claim.assertions.first { $0.label == "c2pa.hash.data" }
         let referencesHardBinding = hardBindingReference.map { hardBinding in
@@ -170,7 +175,7 @@ public enum IIRYC2PAAssetProcessor {
         let disclosedClaims = evidence.presentation.map(PresentationExtractor.disclosedClaims(fromPresentation:)) ?? [:]
         let givenName = disclosedClaims["given_name"]?.trimmingCharacters(in: .whitespacesAndNewlines)
         let familyName = disclosedClaims["family_name"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return [
+        var checks: [IIRYVerificationCheck] = [
             .init(
                 id: "cawg_identity_sig_type",
                 label: "CAWG identity assertion uses IIRY OpenID4VP sig_type",
@@ -224,6 +229,78 @@ public enum IIRYC2PAAssetProcessor {
                 label: "Wallet disclosed committed person's name",
                 passed: givenName?.isEmpty == false && familyName?.isEmpty == false,
                 detail: [givenName, familyName].compactMap { $0 }.joined(separator: " ")
+            )
+        ]
+        if let presentation = evidence.presentation, let nonce = evidence.nonce {
+            checks.append(contentsOf: walletPresentationChecks(
+                presentation: presentation,
+                nonce: nonce,
+                policy: walletPolicy
+            ))
+        } else {
+            checks.append(.init(
+                id: "wallet_presentation_crypto",
+                label: "Wallet presentation cryptographic checks pass",
+                passed: false,
+                detail: "Missing presentation or nonce"
+            ))
+        }
+        return checks
+    }
+
+    private static func walletPresentationChecks(
+        presentation: String,
+        nonce: String,
+        policy: IIRYWalletVerificationPolicy
+    ) -> [IIRYVerificationCheck] {
+        let verification = IIRYWalletPresentationVerifier.verify(
+            presentation: presentation,
+            expectedNonce: nonce,
+            policy: policy
+        )
+        let errorDetail = verification.error
+        return [
+            .init(
+                id: "wallet_issuer_signature",
+                label: "Wallet PID issuer signature validates",
+                passed: verification.issuerSignature == true,
+                detail: verification.issuerSignature == true ? nil : errorDetail
+            ),
+            .init(
+                id: "wallet_issuer_certificate_trusted",
+                label: "Wallet PID issuer certificate chains to sandbox trust list",
+                passed: verification.issuerCertificateTrusted == true,
+                detail: verification.issuerCertificateTrusted == true ? "German EUDIW sandbox trust list" : errorDetail
+            ),
+            .init(
+                id: "wallet_disclosures_match_issuer",
+                label: "Wallet disclosures match issuer SD-JWT commitments",
+                passed: verification.disclosuresMatchIssuerCommitments == true,
+                detail: nil
+            ),
+            .init(
+                id: "wallet_holder_signature",
+                label: "Wallet holder key-binding signature validates",
+                passed: verification.holderSignature == true,
+                detail: verification.holderSignature == true ? nil : errorDetail
+            ),
+            .init(
+                id: "wallet_nonce_matches",
+                label: "Wallet key-binding nonce matches image-bound challenge",
+                passed: verification.nonceMatchesChallenge == true,
+                detail: nonce
+            ),
+            .init(
+                id: "wallet_audience_matches",
+                label: "Wallet key-binding audience matches this verifier",
+                passed: verification.audienceIsThisVerifier == true,
+                detail: verification.audience ?? policy.acceptableAudiences.joined(separator: ", ")
+            ),
+            .init(
+                id: "wallet_sd_hash_binding",
+                label: "Wallet key-binding sd_hash binds presented SD-JWT",
+                passed: verification.sdHashBindsPresentation == true,
+                detail: nil
             )
         ]
     }

@@ -65,7 +65,10 @@ struct IIRYCLI {
 
         var overall = true
         if mode == .own || mode == .both {
-            let report = try IIRYC2PAAssetProcessor.verifyJPEG(data)
+            let report = try IIRYC2PAAssetProcessor.verifyJPEG(
+                data,
+                walletPolicy: try walletVerificationPolicy(args)
+            )
             print("own_c2pa_verification:")
             printReport(report)
             overall = overall && report.overallPassed
@@ -115,6 +118,22 @@ struct IIRYCLI {
             return nil
         }
         return args[index + 1]
+    }
+
+    static func walletVerificationPolicy(_ args: [String]) throws -> IIRYWalletVerificationPolicy {
+        if let audience = option("--audience", in: args), !audience.isEmpty {
+            return IIRYWalletVerificationPolicy(acceptableAudiences: [audience])
+        }
+        if let accessCert = option("--access-cert", in: args), !accessCert.isEmpty {
+            return try IIRYWalletVerificationPolicy.forAccessCertificate(at: URL(fileURLWithPath: accessCert))
+        }
+        if let serviceBaseURL = option("--service-base-url", in: args), !serviceBaseURL.isEmpty {
+            return IIRYWalletVerificationPolicy.forServiceBaseURL(serviceBaseURL)
+        }
+        if ProcessInfo.processInfo.environment["IIRY_VERIFIER_IDENTIFIER"] != nil {
+            return IIRYWalletVerificationPolicy()
+        }
+        return IIRYWalletVerificationPolicy()
     }
 
     enum VerificationMode {
@@ -232,7 +251,7 @@ struct IIRYCLI {
         Usage:
           iiry request-text
           iiry sign <image.jpg> --presentation-json <decoded-response.json> [--out <c2pa-image.iiry>]
-          iiry verify <c2pa-image.iiry|c2pa-image.jpg> [--own|--c2patool|--both] [--trust-c2pa-sample]
+          iiry verify <c2pa-image.iiry|c2pa-image.jpg> [--own|--c2patool|--both] [--access-cert <cert.pem>|--audience <aud>|--service-base-url <url>] [--trust-c2pa-sample]
         """)
     }
 }

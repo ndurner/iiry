@@ -90,6 +90,8 @@ import Testing
     #expect(report.checks.first { $0.id == "cawg_identity_hard_binding_reference" }?.passed == true)
     #expect(report.checks.first { $0.id == "cawg_identity_evidence" }?.passed == true)
     #expect(report.checks.first { $0.id == "nonce_asset_binding" }?.passed == true)
+    #expect(report.checks.first { $0.id == "wallet_issuer_signature" }?.passed == false)
+    #expect(report.overallPassed == false)
 }
 
 @Test func c2paProfileDetectsVisualByteReplay() throws {

@@ -295,7 +295,10 @@ final class IIRYAppModel {
             self.statusMessage = "Wallet response received; signing C2PA JPEG"
             do {
                 let signed = try IIRYC2PAAssetProcessor.signJPEG(draft: updated)
-                self.verificationReport = try IIRYC2PAAssetProcessor.verifyJPEG(signed.jpegData)
+                self.verificationReport = try IIRYC2PAAssetProcessor.verifyJPEG(
+                    signed.jpegData,
+                    walletPolicy: walletVerificationPolicy
+                )
                 self.signedCommitmentURL = try writeTempData(
                     signed.jpegData,
                     fileName: IIRYFileNames.c2paTransportFileName(from: updated.suggestedFileName)
@@ -374,7 +377,10 @@ final class IIRYAppModel {
     }
 
     private func importC2PAJPEG(_ data: Data, fileName: String) throws {
-        let report = try IIRYC2PAAssetProcessor.verifyJPEG(data)
+        let report = try IIRYC2PAAssetProcessor.verifyJPEG(
+            data,
+            walletPolicy: walletVerificationPolicy
+        )
         let importedDraft = try IIRYC2PAAssetProcessor.draft(fromJPEGData: data, suggestedFileName: fileName)
         let visualData = try Base64URL.decode(importedDraft.imageB64URL)
         draft = importedDraft
@@ -398,6 +404,13 @@ final class IIRYAppModel {
         imagePreparationSource = source
         commitmentDisplayMode = .draft
         statusMessage = source == .shared ? "Ready to commit" : (isJPEG(data) ? "Image commitment prepared" : "Image converted to JPEG and prepared")
+    }
+
+    private var walletVerificationPolicy: IIRYWalletVerificationPolicy {
+        let normalized = serviceBaseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return IIRYWalletVerificationPolicy(
+            acceptableAudiences: IIRYWalletVerificationPolicy.defaultAcceptableAudiences() + ["redirect_uri:\(normalized)"]
+        )
     }
 
     private func normalizedJPEGData(from data: Data) throws -> Data {

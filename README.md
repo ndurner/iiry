@@ -42,7 +42,7 @@ IIRY does **not** prove that a WhatsApp account belongs to the wallet holder, th
 | Surface | Role |
 | --- | --- |
 | iPhone app | Captures or imports an image, shows the human challenge text, runs the wallet flow, and exports a signed C2PA JPEG using the protective `.iiry` extension. |
-| Shared Swift core | Implements nonce encoding, asset hashing, CAWG identity assertion encoding, JPEG/C2PA insertion, and validation. |
+| Shared Swift core | Implements nonce encoding, asset hashing, CAWG identity assertion encoding, JPEG/C2PA insertion, SD-JWT/OpenID4VP holder-binding checks, and validation. |
 | macOS CLI | Signs and verifies C2PA JPEGs through the same `IIRYCore` implementation used by the app. |
 | FastAPI service | Drives the OpenID4VP relying-party flow and returns wallet response material to the app. |
 
@@ -116,16 +116,23 @@ The shared Swift core now implements a constrained **IIRY JPEG/C2PA profile**. I
 
 For hackathon development the Swift core uses the same sample ES256 certificate/key material bundled with `c2patool` / `c2pa-rs`. That lets local reference tooling validate the C2PA mechanics, but it does **not** establish production signing-credential trust and must not be presented as a trusted Content Credential signer.
 
+The Swift verifier used by both the iPhone app and CLI also verifies the embedded SD-JWT/OpenID4VP presentation: PID issuer JWT signature, disclosure hashes, holder key-binding signature, nonce, verifier audience, `sd_hash`, and issuer-chain trust against the German EUDIW sandbox PID provider trust list. For certificate-based relying-party deployments, the acceptable verifier audience is derived from the untracked RP access certificate at `service/secrets/access-certificate.pem` as `x509_hash:base64url(sha256(access-certificate DER))`. This follows the mock trust-list setup from the German EUDI Wallet Developer Guide / Blueprint and has only been tested with the German EUDIW Sandbox. It is not production PID issuer trust.
+
 The CLI supports two verification modes for C2PA-bearing JPEGs:
 
 - `iiry verify <image.jpg> --own` verifies the Swift IIRY profile.
 - `iiry verify <image.jpg> --c2patool` asks local `c2patool -d` whether the asset satisfies the reference C2PA verifier.
 - `iiry verify <image.jpg> --both` runs both and exposes disagreement.
+- `iiry verify <image.jpg> --own --service-base-url <url>` verifies the wallet key-binding `aud` against `redirect_uri:<url>`.
+- `iiry verify <image.jpg> --own --audience <aud>` verifies the wallet key-binding `aud` against an explicit verifier identifier such as an `x509_hash:...` client ID.
+- `iiry verify <image.jpg> --own --access-cert <cert.pem>` derives the acceptable `x509_hash:...` audience from a local RP access certificate.
 - `iiry verify <image.jpg> --c2patool --trust-c2pa-sample` repeats the reference check while explicitly trusting the C2PA ES256 sample root anchor for local development only.
 
 For IIRY-generated JPEGs, the expected default `c2patool` development result is that `assertion.dataHash.match`, `assertion.hashedURI.match`, and `claimSignature.validated` pass, while `signingCredential.untrusted` fails. With `--trust-c2pa-sample`, the C2PA layer should report `validation_state: Trusted`; this is still sample trust, not production trust. Separately, generic C2PA tooling can see the `cawg.identity` assertion but will not understand IIRY's OpenID4VP holder-binding semantics until that extension is standardized or explicitly supported.
 
-The web service does not execute `c2patool` and does not receive JPEG bytes for C2PA processing. It only drives the OpenID4VP relying-party flow and returns the Wallet response material to the app.
+The web service drives the OpenID4VP relying-party flow, verifies the wallet response during issuance, and returns the Wallet response material to the app. Received `.iiry` files are verified again in Swift.
+
+The iOS Xcode project runs `scripts/generate-verifier-policy.py` before compiling `IIRYCore`. If `service/secrets/access-certificate.pem` exists locally, the script writes the corresponding non-secret `x509_hash:...` into `ios/IIRY.swiftpm/Sources/IIRYCore/VerifierPolicy.generated.swift` so the app can verify certificate-based wallet audiences without querying the service for policy. The access certificate itself remains ignored by Git. Regenerate the Swift policy after RP access certificate rotation.
 
 ## Acknowledgements
 
