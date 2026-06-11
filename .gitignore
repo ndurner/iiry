@@ -9,3 +9,4 @@ __pycache__/
 service/data/
 service/secrets/*
 !service/secrets/.gitkeep
+outputs/
